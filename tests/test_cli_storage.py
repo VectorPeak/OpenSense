@@ -1,10 +1,13 @@
 from pathlib import Path
+from io import StringIO
 
 import tomllib
 
+from rich.console import Console
 from typer.testing import CliRunner
 
 from opensense.cli import app
+from opensense.models import Issue, RadarResult
 
 
 runner = CliRunner()
@@ -104,7 +107,7 @@ def test_watch_add_does_not_duplicate_repository(tmp_path: Path) -> None:
     assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
 
 
-def test_doctor_warns_for_missing_optional_env_vars_after_init(tmp_path: Path) -> None:
+def test_init_check_warns_for_missing_optional_env_vars_after_init(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
@@ -119,7 +122,7 @@ def test_doctor_warns_for_missing_optional_env_vars_after_init(tmp_path: Path) -
     )
     assert result.exit_code == 0, result.output
 
-    result = runner.invoke(app, ["doctor", "--workspace", str(tmp_path)])
+    result = runner.invoke(app, ["init", "--workspace", str(tmp_path), "--check"])
 
     assert result.exit_code == 0, result.output
     assert "OK: state directory" in result.output
@@ -127,18 +130,155 @@ def test_doctor_warns_for_missing_optional_env_vars_after_init(tmp_path: Path) -
     assert "WARN: LLM API key env" in result.output
 
 
-def test_doctor_fails_before_init(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["doctor", "--workspace", str(tmp_path)])
+def test_init_check_creates_state_and_reports_health(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["init", "--workspace", str(tmp_path), "--check"])
 
-    assert result.exit_code != 0
-    assert "ERROR: state directory" in result.output
+    assert result.exit_code == 0
+    assert "OK: state directory" in result.output
 
 
-def test_doctor_reports_invalid_config_toml(tmp_path: Path) -> None:
+def test_init_check_reports_invalid_config_toml(tmp_path: Path) -> None:
     assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
     (tmp_path / ".opensense" / "config.toml").write_text("[auth\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["doctor", "--workspace", str(tmp_path)])
+    result = runner.invoke(app, ["init", "--workspace", str(tmp_path), "--check"])
 
     assert result.exit_code != 0
     assert "ERROR: config.toml - invalid TOML" in result.output
+
+
+def test_help_exposes_only_five_top_level_product_commands() -> None:
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0, result.output
+    registered_commands = {command.name or command.callback.__name__ for command in app.registered_commands}
+    registered_groups = {group.name for group in app.registered_groups}
+
+    assert registered_commands | registered_groups == {"init", "watch", "daily", "issue", "repo"}
+    for retired_name in ("doctor", "inspect", "radar"):
+        assert retired_name not in result.output
+
+
+def test_merged_top_level_commands_are_no_longer_available() -> None:
+    for command in ("doctor", "inspect", "plan", "radar"):
+        result = runner.invoke(app, [command, "--help"])
+
+        assert result.exit_code != 0
+
+
+def test_daily_points_next_step_to_issue_command(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=1,
+        title="Fix flaky CLI test",
+        labels=("bug", "good first issue"),
+        comments=1,
+        repository_stars=900,
+    )
+
+    monkeypatch.setattr("opensense.cli.load_watchlist", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+    output = StringIO()
+    monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
+
+    result = runner.invoke(app, ["daily", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "opensense issue owner/repo#1" in output.getvalue()
+
+
+def test_issue_inspects_one_candidate(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=7,
+        title="Add missing parser test",
+        labels=("test",),
+        comments=0,
+        repository_stars=1200,
+    )
+
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+
+    result = runner.invoke(app, ["issue", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "owner/repo#7" in result.output
+    assert "Score:" in result.output
+
+
+def test_issue_plan_can_run_without_llm(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=8,
+        title="Fix crash on empty config",
+        labels=("bug",),
+        comments=2,
+        repository_stars=1200,
+    )
+
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+
+    result = runner.invoke(app, ["issue", "owner/repo#8", "--plan", "--no-llm", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "# PR Plan for owner/repo#8" in result.output
+
+
+def test_issue_rejects_invalid_reference(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["issue", "not-a-reference", "--workspace", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "owner/repo#number" in result.output
+
+
+def test_issue_rejects_malformed_repository_reference(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["issue", "not-a-repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "owner/repo#number" in result.output
+
+
+def test_issue_rejects_non_positive_issue_number(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["issue", "owner/repo#0", "--workspace", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "greater than zero" in result.output
+
+
+def test_issue_reports_when_recent_open_issue_is_not_found(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [])
+
+    result = runner.invoke(app, ["issue", "owner/repo#99", "--workspace", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "was not found in the latest open issues" in result.output
+
+
+def test_repo_splits_skills_and_displays_radar(monkeypatch, tmp_path: Path) -> None:
+    captured: dict[str, tuple[str, ...]] = {}
+
+    def fake_fetch_radar(client, repo: str, *, skills: tuple[str, ...], stale_days: int) -> RadarResult:
+        captured["skills"] = skills
+        return RadarResult(
+            repository=repo,
+            score=82,
+            recommendation="Go",
+            reasons=("language matches your skills",),
+        )
+
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_radar", fake_fetch_radar)
+
+    result = runner.invoke(app, ["repo", "owner/repo", "--skills", "python,llm", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Repository Signals" in result.output
+    assert "owner/repo" in result.output
+    assert captured["skills"] == ("python", "llm")

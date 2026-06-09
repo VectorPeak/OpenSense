@@ -14,7 +14,7 @@ Daily PR opportunity finder for known open-source repositories
 </div>
 
 ```text
-known repos  ->  daily issue ranking  ->  issue inspect  ->  PR plan
+known repos  ->  daily issue ranking  ->  issue --plan  ->  PR attempt
 ```
 
 ## 项目简介
@@ -44,7 +44,11 @@ daily browsing  ->  short candidate list  ->  focused issue analysis  ->  PR-rea
 
 ## Quick Start
 
-OpenSense currently ships an MVP CLI for workspace setup, watchlist management, daily issue ranking, issue inspection, PR planning, and lightweight repo radar.
+OpenSense currently ships an MVP CLI with five top-level commands:
+
+```text
+init -> watch -> daily -> issue -> repo
+```
 
 ```bash
 # 1. Create local OpenSense config
@@ -56,19 +60,18 @@ opensense watch add pallets/flask
 opensense watch add encode/httpx
 
 # 3. Check local config and optional API env vars
-opensense doctor
+opensense init --check
 
 # 4. Get today's PR candidates
 opensense daily
 
-# 5. Inspect one promising issue
-opensense inspect vllm-project/vllm#12345
+# 5. Inspect one promising issue and optionally generate a PR plan
+opensense issue vllm-project/vllm#12345
+opensense issue vllm-project/vllm#12345 --plan --no-llm
 
-# 6. Generate a pre-PR plan
-opensense plan vllm-project/vllm#12345
-
-# 7. Check whether a repository looks PR-friendly
-opensense radar vllm-project/vllm --skills python,llm
+# 6. Check whether repositories look PR-friendly
+opensense repo vllm-project/vllm --skills python,llm
+opensense repo vllm-project/vllm pallets/flask --skills python
 ```
 
 LLM is optional. If configured, it improves issue summaries and PR planning:
@@ -132,58 +135,38 @@ Useful filters:
 opensense daily --min-stars 500 --updated-days 14 --max-comments 10 --limit 5
 ```
 
-Each recommendation should explain:
+Each recommendation explains:
 
-- opportunity score
-- smallness score
-- mergeability score
+- total score
+- likely contribution type
 - why it looks approachable
-- why it may be risky
 - suggested next command
 
 Example output:
 
 ```text
-#1 vllm-project/vllm#12345
-Opportunity: 82
-Smallness: 88
-Mergeability: 76
+Daily PR candidates
 
-Why:
-+ maintainer replied recently
-+ no assignee
-+ likely test or small bugfix scope
-
-Risk:
-- strict CI
-- reproduction still needs confirmation
-
-Next:
-opensense plan vllm-project/vllm#12345
+#  Issue                    Score  Type      Why                         Next
+1  vllm-project/vllm#12345  82     bug fix   good first issue label      opensense issue vllm-project/vllm#12345
 ```
 
-### 4. Inspect One Issue
+### 4. Inspect And Plan An Issue
 
 ```bash
-opensense inspect vllm-project/vllm#12345
+opensense issue vllm-project/vllm#12345
+opensense issue vllm-project/vllm#12345 --plan
 ```
 
-`inspect` answers:
+`issue` answers:
 
 - What is this issue about?
-- Is it already assigned or claimed?
-- Has a maintainer responded recently?
-- Is there a linked PR?
 - Does it look like bug fix, tests, docs, or feature work?
 - Is it suitable for a small PR?
+- Which deterministic signals make it look approachable?
+- Which rule-based risks should you check before coding?
 
-### 5. Generate a PR Plan
-
-```bash
-opensense plan vllm-project/vllm#12345
-```
-
-`plan` turns one candidate issue into a pre-PR checklist:
+`issue --plan` turns one candidate issue into a pre-PR checklist:
 
 - problem summary
 - likely contribution type
@@ -193,13 +176,13 @@ opensense plan vllm-project/vllm#12345
 - whether to comment before coding
 - PR title/body draft outline
 
-### 6. Run Repo Radar
+### 5. Evaluate Repositories
 
 ```bash
-opensense radar vllm-project/vllm --skills python,llm
+opensense repo vllm-project/vllm --skills python,llm
 ```
 
-`radar` checks lightweight repository signals before you spend serious time on a PR:
+`repo` checks lightweight repository signals before you spend serious time on a PR:
 
 - repository stars
 - recent merged PRs
@@ -237,12 +220,12 @@ It currently does:
 
 - maintain a local watchlist of GitHub repositories
 - initialize `.opensense/` local state
-- check local config and optional environment variables with `doctor`
+- check local config and optional environment variables with `init --check`
 - scan open issues from watched repositories with GitHub API
 - rank candidates using deterministic rule-based signals
 - optionally use LLMs for deeper inspection and PR planning
 - generate a pre-PR plan before the user starts coding
-- run lightweight repo radar before deeper PR investment
+- run lightweight repository signal checks before deeper PR investment
 
 It does not yet:
 
@@ -280,41 +263,31 @@ OpenSense is not trying to know everything about open source. It optimizes one a
 
 ## Planned Architecture
 
+The current MVP keeps command wiring in a single `cli.py` and splits domain logic by responsibility:
+
 ```text
 src/opensense/
   cli.py
   config.py
+  doctor.py
   models.py
-
-  commands/
-    init.py
-    watch.py
-    daily.py
-    inspect.py
-    plan.py
 
   github/
     client.py
     issues.py
-    prs.py
+    radar.py
 
   core/
-    filters.py
+    radar.py
     scoring.py
     ranking.py
     planner.py
 
   llm/
     client.py
-    prompts.py
 
   storage/
-    workspace.py
     watchlist.py
-    cache.py
-
-  report/
-    markdown.py
 ```
 
 The first implementation should stay thin: Typer/Rich CLI, GitHub API client, TOML/JSON local state, deterministic scoring, and optional LLM-assisted planning.
@@ -326,11 +299,9 @@ OpenSense currently has the first runnable MVP CLI:
 - `opensense init`
 - `opensense watch add`
 - `opensense watch list`
-- `opensense doctor`
 - `opensense daily`
-- `opensense inspect`
-- `opensense plan`
-- `opensense radar`
+- `opensense issue`
+- `opensense repo`
 
 ## License
 
