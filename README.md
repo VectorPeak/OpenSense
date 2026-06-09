@@ -4,7 +4,7 @@
 
 Daily PR opportunity finder for known open-source repositories
 
-![status](https://img.shields.io/badge/status-planning-15803D)
+![status](https://img.shields.io/badge/status-mvp%20cli-15803D)
 ![python](https://img.shields.io/badge/python-3.10+-blue)
 ![cli](https://img.shields.io/badge/interface-CLI-07C983)
 ![llm](https://img.shields.io/badge/LLM-optional-purple)
@@ -44,7 +44,7 @@ daily browsing  ->  short candidate list  ->  focused issue analysis  ->  PR-rea
 
 ## Quick Start
 
-> OpenSense is still in the planning/prototype stage. The commands below define the intended MVP workflow.
+OpenSense currently ships an MVP CLI for workspace setup, watchlist management, daily issue ranking, issue inspection, PR planning, and lightweight repo radar.
 
 ```bash
 # 1. Create local OpenSense config
@@ -55,26 +55,36 @@ opensense watch add vllm-project/vllm
 opensense watch add pallets/flask
 opensense watch add encode/httpx
 
-# 3. Get today's PR candidates
+# 3. Check local config and optional API env vars
+opensense doctor
+
+# 4. Get today's PR candidates
 opensense daily
 
-# 4. Inspect one promising issue
+# 5. Inspect one promising issue
 opensense inspect vllm-project/vllm#12345
 
-# 5. Generate a pre-PR plan
+# 6. Generate a pre-PR plan
 opensense plan vllm-project/vllm#12345
+
+# 7. Check whether a repository looks PR-friendly
+opensense radar vllm-project/vllm --skills python,llm
 ```
 
 LLM is optional. If configured, it improves issue summaries and PR planning:
 
 ```bash
-export OPENAI_API_KEY=...
-opensense init --llm openai --model gpt-4o-mini
+export OPENSENSE_LLM_API_KEY=...
+export OPENSENSE_LLM_BASE_URL=https://api.openai.com/v1
+export OPENSENSE_LLM_MODEL=gpt-5.5
+opensense init --llm-api-key-env OPENSENSE_LLM_API_KEY
 ```
 
-OpenSense should never store raw API keys in committed files. Configuration should reference environment variables.
+OpenSense also reads `GITHUB_TOKEN` by default for GitHub API rate limits. It should never store raw API keys in committed files. Configuration should reference environment variables.
 
 ## Core Workflow
+
+The MVP path is implemented as a thin CLI. Network-backed commands use the GitHub API and deterministic rules first; LLM support is optional.
 
 ### 1. Initialize
 
@@ -115,6 +125,12 @@ opensense daily
 ```
 
 The daily command scans watched repositories and returns a short list of candidate issues.
+
+Useful filters:
+
+```bash
+opensense daily --min-stars 500 --updated-days 14 --max-comments 10 --limit 5
+```
 
 Each recommendation should explain:
 
@@ -177,6 +193,21 @@ opensense plan vllm-project/vllm#12345
 - whether to comment before coding
 - PR title/body draft outline
 
+### 6. Run Repo Radar
+
+```bash
+opensense radar vllm-project/vllm --skills python,llm
+```
+
+`radar` checks lightweight repository signals before you spend serious time on a PR:
+
+- repository stars
+- recent merged PRs
+- open PR backlog
+- stale PR ratio
+- external contributor merges
+- language and skill overlap
+
 ## Selection Criteria
 
 OpenSense prefers issues that look:
@@ -202,13 +233,16 @@ OpenSense should down-rank issues that look:
 
 OpenSense v1 focuses on contribution triage and planning.
 
-It does:
+It currently does:
 
 - maintain a local watchlist of GitHub repositories
-- scan open issues from watched repositories
+- initialize `.opensense/` local state
+- check local config and optional environment variables with `doctor`
+- scan open issues from watched repositories with GitHub API
 - rank candidates using deterministic rule-based signals
 - optionally use LLMs for deeper inspection and PR planning
 - generate a pre-PR plan before the user starts coding
+- run lightweight repo radar before deeper PR investment
 
 It does not yet:
 
@@ -287,11 +321,16 @@ The first implementation should stay thin: Typer/Rich CLI, GitHub API client, TO
 
 ## Status
 
-OpenSense is currently in early planning. The first milestone is to make the daily workflow real:
+OpenSense currently has the first runnable MVP CLI:
 
-```text
-watchlist -> daily ranking -> inspect -> PR plan
-```
+- `opensense init`
+- `opensense watch add`
+- `opensense watch list`
+- `opensense doctor`
+- `opensense daily`
+- `opensense inspect`
+- `opensense plan`
+- `opensense radar`
 
 ## License
 

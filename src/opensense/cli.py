@@ -1,0 +1,268 @@
+"""OpenSense command line interface."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+from opensense.config import OpenSenseConfig, initialize_state, load_config, validate_env_var_name
+from opensense.core.planner import generate_plan
+from opensense.core.ranking import rank_issues
+from opensense.core.scoring import score_issue
+from opensense.doctor import has_errors, run_checks
+from opensense.github.client import GitHubClient
+from opensense.github.issues import fetch_open_issues
+from opensense.github.radar import fetch_radar
+from opensense.llm.client import config_from_env
+from opensense.storage.watchlist import add_repository, load_watchlist
+
+
+app = typer.Typer(help="Daily PR opportunity finder for known open-source repositories.")
+watch_app = typer.Typer(help="Manage watched repositories.")
+app.add_typer(watch_app, name="watch")
+console = Console()
+
+
+def workspace_option() -> Optional[Path]:
+    return typer.Option(None, "--workspace", help="Project workspace path. Defaults to current directory.")
+
+
+@app.command()
+def init(
+    workspace: Optional[Path] = workspace_option(),
+    github_token_env: str = typer.Option("GITHUB_TOKEN", help="Environment variable that stores the GitHub token."),
+    llm_api_key_env: str = typer.Option("OPENSENSE_LLM_API_KEY", help="Environment variable that stores the LLM API key."),
+    llm_base_url_env: str = typer.Option("OPENSENSE_LLM_BASE_URL", help="Environment variable that stores the LLM base URL."),
+    llm_model_env: str = typer.Option("OPENSENSE_LLM_MODEL", help="Environment variable that stores the LLM model."),
+    force: bool = typer.Option(False, "--force", help="Rewrite config and watchlist files."),
+) -> None:
+    """Create local OpenSense state."""
+
+    try:
+        config = OpenSenseConfig(
+            github_token_env=validate_env_var_name(github_token_env, "--github-token-env"),
+            llm_api_key_env=validate_env_var_name(llm_api_key_env, "--llm-api-key-env"),
+            llm_base_url_env=validate_env_var_name(llm_base_url_env, "--llm-base-url-env"),
+            llm_model_env=validate_env_var_name(llm_model_env, "--llm-model-env"),
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    root = initialize_state(workspace, config, force=force)
+    typer.echo(f"Initialized OpenSense state at {root}")
+    typer.echo("Secrets are read from environment variables; raw API keys are not stored.")
+
+
+@watch_app.command("add")
+def watch_add(repo: str, workspace: Optional[Path] = workspace_option()) -> None:
+    """Add an owner/repo entry to the watchlist."""
+
+    try:
+        added = add_repository(repo, workspace)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    if added:
+        typer.echo(f"Added {repo}")
+    else:
+        typer.echo(f"{repo} is already watched")
+
+
+@watch_app.command("list")
+def watch_list(workspace: Optional[Path] = workspace_option()) -> None:
+    """List watched repositories."""
+
+    try:
+        repositories = load_watchlist(workspace)
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    if not repositories:
+        typer.echo("No watched repositories yet.")
+        return
+    for repo in repositories:
+        typer.echo(repo)
+
+
+@app.command()
+def doctor(workspace: Optional[Path] = workspace_option()) -> None:
+    """Check local OpenSense configuration health."""
+
+    checks = run_checks(workspace)
+    for check in checks:
+        typer.echo(f"{check.status}: {check.name} - {check.detail}")
+    if has_errors(checks):
+        raise typer.Exit(1)
+
+
+def parse_issue_ref(ref: str) -> tuple[str, int]:
+    if "#" not in ref:
+        raise typer.BadParameter("Issue must use owner/repo#number format.")
+    repo, number_text = ref.rsplit("#", 1)
+    try:
+        number = int(number_text)
+    except ValueError as exc:
+        raise typer.BadParameter("Issue number must be an integer.") from exc
+    return repo, number
+
+
+def github_client_for_workspace(workspace: Optional[Path]) -> GitHubClient:
+    config = load_config(workspace)
+    token_env = str(config.get("auth", {}).get("github_token_env", "GITHUB_TOKEN"))
+    return GitHubClient(token_env=token_env)
+
+
+@app.command()
+def daily(
+    workspace: Optional[Path] = workspace_option(),
+    limit: int = typer.Option(10, "--limit", min=1, max=50, help="Maximum issues to show."),
+    min_stars: int = typer.Option(0, "--min-stars", help="Minimum repository stars."),
+    updated_days: int = typer.Option(30, "--updated-days", help="Prefer issues updated within this many days."),
+    max_comments: int = typer.Option(20, "--max-comments", help="Maximum comments allowed for candidates."),
+) -> None:
+    """Rank daily PR candidates from watched repositories."""
+
+    try:
+        repositories = load_watchlist(workspace)
+        client = github_client_for_workspace(workspace)
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    issues = []
+    for repo in repositories:
+        issues.extend(fetch_open_issues(client, repo, limit=limit * 3))
+    ranked = rank_issues(issues, limit=limit, min_stars=min_stars, updated_days=updated_days, max_comments=max_comments)
+
+    table = Table(title="Daily PR candidates")
+    table.add_column("#")
+    table.add_column("Issue")
+    table.add_column("Score")
+    table.add_column("Type")
+    table.add_column("Why")
+    table.add_column("Next")
+    for index, item in enumerate(ranked, start=1):
+        table.add_row(
+            str(index),
+            item.issue.ref,
+            str(item.total),
+            item.contribution_type,
+            "; ".join(item.reasons[:2]) or "rule match",
+            f"opensense inspect {item.issue.ref}",
+        )
+    console.print(table)
+
+
+@app.command()
+def inspect(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    min_stars: int = typer.Option(0, "--min-stars", help="Minimum repository stars."),
+    updated_days: int = typer.Option(30, "--updated-days", help="Freshness window."),
+    max_comments: int = typer.Option(20, "--max-comments", help="Comment risk threshold."),
+) -> None:
+    """Inspect one GitHub issue with deterministic signals."""
+
+    repo, number = parse_issue_ref(issue)
+    client = github_client_for_workspace(workspace)
+    candidates = fetch_open_issues(client, repo, limit=100)
+    match = next((item for item in candidates if item.number == number), None)
+    if match is None:
+        typer.echo(f"{issue} was not found in the latest open issues.", err=True)
+        raise typer.Exit(1)
+    scored = score_issue(match, min_stars=min_stars, updated_days=updated_days, max_comments=max_comments)
+    console.print(
+        Panel(
+            "\n".join(
+                [
+                    f"Score: {scored.total}",
+                    f"Opportunity: {scored.opportunity}",
+                    f"Smallness: {scored.smallness}",
+                    f"Mergeability: {scored.mergeability}",
+                    f"Type: {scored.contribution_type}",
+                    "",
+                    "Why:",
+                    *(f"+ {reason}" for reason in scored.reasons),
+                    "",
+                    "Risk:",
+                    *(f"- {risk}" for risk in scored.risks),
+                ]
+            ),
+            title=match.ref,
+        )
+    )
+
+
+@app.command()
+def plan(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Use rule-based planning even when an LLM key is available."),
+    model: Optional[str] = typer.Option(None, "--model", help="Override LLM model name."),
+) -> None:
+    """Generate a pre-PR plan for one issue."""
+
+    repo, number = parse_issue_ref(issue)
+    client = github_client_for_workspace(workspace)
+    candidates = fetch_open_issues(client, repo, limit=100)
+    match = next((item for item in candidates if item.number == number), None)
+    if match is None:
+        typer.echo(f"{issue} was not found in the latest open issues.", err=True)
+        raise typer.Exit(1)
+    scored = score_issue(match)
+    llm_config = None
+    if not no_llm:
+        config_data = load_config(workspace)
+        llm = config_data.get("llm", {})
+        llm_config = config_from_env(
+            api_key_env=str(llm.get("api_key_env", "OPENSENSE_LLM_API_KEY")),
+            base_url_env=str(llm.get("base_url_env", "OPENSENSE_LLM_BASE_URL")),
+            model_env=str(llm.get("model_env", "OPENSENSE_LLM_MODEL")),
+        )
+        if model:
+            llm_config = type(llm_config)(api_key_env=llm_config.api_key_env, base_url=llm_config.base_url, model=model)
+    console.print(generate_plan(scored, llm_config))
+
+
+@app.command()
+def radar(
+    repos: list[str],
+    workspace: Optional[Path] = workspace_option(),
+    skills: str = typer.Option("", "--skills", help="Comma-separated skills/languages."),
+    stale_days: int = typer.Option(30, "--stale-days", help="Open PRs older than this are stale."),
+) -> None:
+    """Evaluate whether repositories look worth a PR attempt."""
+
+    client = github_client_for_workspace(workspace)
+    skill_items = tuple(item.strip() for item in skills.split(",") if item.strip())
+    table = Table(title="Repo Radar")
+    table.add_column("Repository")
+    table.add_column("Score")
+    table.add_column("Verdict")
+    table.add_column("Signals")
+    for repo in repos:
+        result = fetch_radar(client, repo, skills=skill_items, stale_days=stale_days)
+        table.add_row(
+            result.repository,
+            str(result.score),
+            result.recommendation,
+            "; ".join(result.reasons[:2] or result.risks[:2]),
+        )
+    console.print(table)
+
+
+def main() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    main()
