@@ -214,10 +214,11 @@ def find_open_issue(workspace: Optional[Path], issue_ref: str):
 def daily(
     workspace: Optional[Path] = workspace_option(),
     limit: int = typer.Option(10, "--limit", min=1, max=50, help="Maximum issues to show."),
+    candidate_pool: int = typer.Option(30, "--candidate-pool", min=5, max=200, help="Maximum issues per repository to collect when --llm is enabled."),
     min_stars: int = typer.Option(0, "--min-stars", help="Minimum repository stars."),
     updated_days: int = typer.Option(30, "--updated-days", help="Prefer issues updated within this many days."),
     max_comments: int = typer.Option(20, "--max-comments", help="Maximum comments allowed for candidates."),
-    llm: bool = typer.Option(False, "--llm", help="Ask the configured LLM to analyze the ranked candidates."),
+    llm: bool = typer.Option(False, "--llm", help="Use the configured LLM to find the best issues from a larger candidate pool."),
     model: Optional[str] = typer.Option(None, "--model", help="Override LLM model name for --llm."),
 ) -> None:
     """Rank daily PR candidates from watched repositories."""
@@ -231,8 +232,17 @@ def daily(
         raise typer.Exit(1) from exc
 
     issues = []
+    fetch_limit = candidate_pool if llm else limit * 3
     for repo in repositories:
-        issues.extend(fetch_open_issues(client, repo, limit=limit * 3))
+        issues.extend(fetch_open_issues(client, repo, limit=fetch_limit))
+    llm_candidates = rank_issues(
+        issues,
+        limit=min(candidate_pool, 50),
+        min_stars=min_stars,
+        updated_days=updated_days,
+        max_comments=max_comments,
+        skills=skills,
+    )
     ranked = rank_issues(
         issues,
         limit=limit,
@@ -261,7 +271,17 @@ def daily(
     console.print(table)
     if llm:
         try:
-            console.print(Panel(generate_daily_analysis(ranked, skills, llm_config_for_workspace(workspace, model)), title="LLM Daily Analysis"))
+            console.print(
+                Panel(
+                    generate_daily_analysis(
+                        llm_candidates,
+                        skills,
+                        llm_config_for_workspace(workspace, model),
+                        display_limit=limit,
+                    ),
+                    title="LLM-Assisted Finding",
+                )
+            )
         except Exception as exc:
             typer.echo(f"LLM analysis failed: {exc}", err=True)
             raise typer.Exit(1) from exc
