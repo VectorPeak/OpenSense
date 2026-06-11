@@ -286,6 +286,7 @@ def test_daily_points_next_step_to_issue_command(monkeypatch, tmp_path: Path) ->
     monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: [])
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
     monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+    monkeypatch.setattr("opensense.cli.llm_config_for_workspace", lambda workspace, model=None: None)
     output = StringIO()
     monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
 
@@ -319,6 +320,7 @@ def test_daily_uses_watched_skills_to_boost_matching_issues(monkeypatch, tmp_pat
     monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: ["python"])
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
     monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [generic_issue, python_issue])
+    monkeypatch.setattr("opensense.cli.llm_config_for_workspace", lambda workspace, model=None: None)
     output = StringIO()
     monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
 
@@ -330,7 +332,7 @@ def test_daily_uses_watched_skills_to_boost_matching_issues(monkeypatch, tmp_pat
     assert "matches watched skill: python" in text
 
 
-def test_daily_llm_prints_candidate_analysis(monkeypatch, tmp_path: Path) -> None:
+def test_daily_prints_llm_finding_by_default(monkeypatch, tmp_path: Path) -> None:
     fetch_limits: list[int] = []
     issue = Issue(
         owner="owner",
@@ -357,13 +359,42 @@ def test_daily_llm_prints_candidate_analysis(monkeypatch, tmp_path: Path) -> Non
     output = StringIO()
     monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
 
-    result = runner.invoke(app, ["daily", "--llm", "--workspace", str(tmp_path)])
+    result = runner.invoke(app, ["daily", "--workspace", str(tmp_path)])
 
     text = output.getvalue()
     assert result.exit_code == 0, result.output
     assert fetch_limits == [30]
     assert "LLM-Assisted Finding" in text
     assert "Pick owner/repo#3 first." in text
+
+
+def test_daily_no_llm_uses_smaller_rule_based_fetch(monkeypatch, tmp_path: Path) -> None:
+    fetch_limits: list[int] = []
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=31,
+        title="Fix test crash",
+        labels=("bug",),
+        comments=1,
+        repository_stars=900,
+    )
+
+    monkeypatch.setattr("opensense.cli.load_repositories", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: [])
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr(
+        "opensense.cli.fetch_open_issues",
+        lambda client, repo, limit: fetch_limits.append(limit) or [issue],
+    )
+    output = StringIO()
+    monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
+
+    result = runner.invoke(app, ["daily", "--no-llm", "--limit", "5", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert fetch_limits == [15]
+    assert "LLM-Assisted Finding" not in output.getvalue()
 
 
 def test_daily_llm_candidate_pool_controls_fetch_size(monkeypatch, tmp_path: Path) -> None:
@@ -393,7 +424,7 @@ def test_daily_llm_candidate_pool_controls_fetch_size(monkeypatch, tmp_path: Pat
     output = StringIO()
     monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
 
-    result = runner.invoke(app, ["daily", "--llm", "--candidate-pool", "42", "--limit", "5", "--workspace", str(tmp_path)])
+    result = runner.invoke(app, ["daily", "--candidate-pool", "42", "--limit", "5", "--workspace", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
     assert fetch_limits == [42]
@@ -422,7 +453,7 @@ def test_daily_llm_reports_failure_without_traceback(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr("opensense.cli.generate_daily_analysis", fail_analysis)
 
-    result = runner.invoke(app, ["daily", "--llm", "--workspace", str(tmp_path)])
+    result = runner.invoke(app, ["daily", "--workspace", str(tmp_path)])
 
     assert result.exit_code == 1
     assert "LLM analysis failed: provider rejected request" in result.output
