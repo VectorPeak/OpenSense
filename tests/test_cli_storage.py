@@ -242,14 +242,14 @@ def test_init_check_reports_invalid_config_toml(tmp_path: Path) -> None:
     assert "ERROR: config.toml - invalid TOML" in result.output
 
 
-def test_help_exposes_only_five_top_level_product_commands() -> None:
+def test_help_exposes_current_top_level_product_commands() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0, result.output
     registered_commands = {command.name or command.callback.__name__ for command in app.registered_commands}
     registered_groups = {group.name for group in app.registered_groups}
 
-    assert registered_commands | registered_groups == {"init", "watch", "daily", "issue", "repo"}
+    assert registered_commands | registered_groups == {"init", "watch", "daily", "issue", "repo", "pack", "evidence", "patch"}
     for retired_name in ("doctor", "inspect", "radar"):
         assert retired_name not in result.output
 

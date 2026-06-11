@@ -27,6 +27,9 @@ opensense watch skill add <skill>
 opensense daily
 opensense issue <owner/repo#issue>
 opensense issue <owner/repo#issue> --plan
+opensense pack <issue-url>
+opensense patch <issue-url> --dry-run
+opensense evidence <issue-url>
 opensense repo <owner/repo>
 ```
 
@@ -50,4 +53,4 @@ The next major direction is agent-native PR readiness:
 daily candidates -> one issue -> context pack -> risk check -> evidence -> agent handoff
 ```
 
-Phase two should add `pack`, `patch --dry-run`, and `evidence` before any automatic patch or PR workflow. See `.docs/phase-two-agent-pr-workflow.md` and `.docs/goal.md`.
+Phase two now adds `pack`, `patch --dry-run`, and `evidence` before any automatic patch or PR workflow. See `.docs/phase-two-agent-pr-workflow.md` and `.docs/goal.md`.

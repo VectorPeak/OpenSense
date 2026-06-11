@@ -35,3 +35,12 @@ def fetch_open_issues(
             continue
         issues.append(Issue.from_github(owner, name, payload, repository_stars=stars))
     return issues
+
+
+def fetch_issue(client: GitHubClient, repo: str, number: int) -> Issue:
+    owner, name = repo.split("/", 1)
+    stars = repo_stars(client, repo)
+    payload = client.get_json(f"/repos/{repo}/issues/{number}")
+    if "pull_request" in payload:
+        raise ValueError("Reference points to a pull request, not an issue.")
+    return Issue.from_github(owner, name, payload, repository_stars=stars)

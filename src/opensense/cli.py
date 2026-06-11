@@ -12,12 +12,16 @@ from rich.table import Table
 
 from opensense.config import OpenSenseConfig, initialize_state, load_config, validate_env_var_name
 from opensense.core.daily import generate_daily_analysis
+from opensense.core.evidence import generate_evidence
+from opensense.core.issue_ref import parse_issue_reference
+from opensense.core.pack import generate_pack
+from opensense.core.patch import patch_dry_run
 from opensense.core.planner import generate_plan
 from opensense.core.ranking import rank_issues
 from opensense.core.scoring import score_issue
 from opensense.doctor import has_errors, run_checks
 from opensense.github.client import GitHubClient
-from opensense.github.issues import fetch_open_issues
+from opensense.github.issues import fetch_issue, fetch_open_issues
 from opensense.github.radar import fetch_radar
 from opensense.llm.client import config_from_env
 from opensense.storage.watchlist import add_repository, add_skill, load_repositories, load_skills, validate_repo_name
@@ -157,20 +161,11 @@ def emit_checks(workspace: Optional[Path]) -> None:
 
 
 def parse_issue_ref(ref: str) -> tuple[str, int]:
-    if "#" not in ref:
-        raise typer.BadParameter("Issue must use owner/repo#number format.")
-    repo_text, number_text = ref.rsplit("#", 1)
     try:
-        repo = validate_repo_name(repo_text)
+        issue_ref = parse_issue_reference(ref)
     except ValueError as exc:
-        raise typer.BadParameter("Issue must use owner/repo#number format.") from exc
-    try:
-        number = int(number_text)
-    except ValueError as exc:
-        raise typer.BadParameter("Issue number must be an integer.") from exc
-    if number <= 0:
-        raise typer.BadParameter("Issue number must be greater than zero.")
-    return repo, number
+        raise typer.BadParameter(str(exc)) from exc
+    return issue_ref.repository, issue_ref.number
 
 
 def github_client_for_workspace(workspace: Optional[Path]) -> GitHubClient:
@@ -208,6 +203,20 @@ def find_open_issue(workspace: Optional[Path], issue_ref: str):
         typer.echo(f"{issue_ref} was not found in the latest open issues.", err=True)
         raise typer.Exit(1)
     return match
+
+
+def fetch_one_issue(workspace: Optional[Path], issue_text: str):
+    try:
+        issue_ref = parse_issue_reference(issue_text)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    client = github_client_for_workspace(workspace)
+    try:
+        issue = fetch_issue(client, issue_ref.repository, issue_ref.number)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    return issue_ref, issue
 
 
 @app.command()
@@ -333,6 +342,84 @@ def issue(
         if not no_llm:
             llm_config = llm_config_for_workspace(workspace, model)
         console.print(generate_plan(scored, llm_config))
+
+
+@app.command()
+def pack(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing pack files."),
+) -> None:
+    """Generate a read-only context pack for one issue."""
+
+    issue_ref, fetched_issue = fetch_one_issue(workspace, issue)
+    try:
+        result = generate_pack(fetched_issue, issue_ref, workspace, force=force)
+    except (FileExistsError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Context pack written to {result.root}")
+    for path in result.written_files:
+        console.print(f"- {path.name}")
+
+
+@app.command()
+def evidence(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing evidence files."),
+) -> None:
+    """Generate PR evidence drafts from an existing context pack."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        result = generate_evidence(issue_ref, workspace, force=force)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except (FileExistsError, FileNotFoundError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Evidence files written to {result.root}")
+    for path in result.written_files:
+        console.print(f"- {path.name}")
+
+
+@app.command()
+def patch(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    dry_run: bool = typer.Option(True, "--dry-run/--write", help="Only --dry-run is supported in phase two."),
+) -> None:
+    """Evaluate whether one issue is suitable for agent-assisted patch work."""
+
+    if not dry_run:
+        typer.echo("Phase two only supports `opensense patch <issue> --dry-run`; source writes are not available.", err=True)
+        raise typer.Exit(1)
+    issue_ref, fetched_issue = fetch_one_issue(workspace, issue)
+    result = patch_dry_run(fetched_issue)
+    console.print(
+        Panel(
+            "\n".join(
+                [
+                    f"Issue: {issue_ref.ref}",
+                    f"Feasible for agent-assisted patch: {'yes' if result.feasible else 'no'}",
+                    f"Confidence: {result.confidence}",
+                    "",
+                    "Risks:",
+                    *(f"- {risk}" for risk in result.risks),
+                    "",
+                    "Required context:",
+                    *(f"- {item}" for item in result.required_context),
+                    "",
+                    "Suggested dry-run steps:",
+                    *(f"- {item}" for item in result.suggested_steps),
+                    "",
+                    "Safety: no source files were modified, no branch was created, and no PR was opened.",
+                ]
+            ),
+            title="Patch Dry Run",
+        )
+    )
 
 
 @app.command()

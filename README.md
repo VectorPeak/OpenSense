@@ -61,7 +61,7 @@ pip install opensense-vp
 当前 CLI 包含五个顶层命令：
 
 ```text
-init -> watch -> daily -> issue -> repo
+init -> watch -> daily -> issue -> pack -> patch -> evidence -> repo
 ```
 
 ```bash
@@ -88,7 +88,12 @@ opensense daily --no-llm
 opensense issue vllm-project/vllm#12345
 opensense issue vllm-project/vllm#12345 --plan --no-llm
 
-# 6. 判断仓库是否适合投入 PR
+# 6. Generate an Agent context pack and PR evidence draft
+opensense pack https://github.com/vllm-project/vllm/issues/12345
+opensense patch https://github.com/vllm-project/vllm/issues/12345 --dry-run
+opensense evidence https://github.com/vllm-project/vllm/issues/12345
+
+# 7. 判断仓库是否适合投入 PR
 opensense repo vllm-project/vllm --skills python,llm
 opensense repo vllm-project/vllm pallets/flask --skills python
 ```
@@ -313,6 +318,16 @@ Daily PR candidates
 opensense issue vllm-project/vllm#12345
 opensense issue vllm-project/vllm#12345 --plan
 ```
+
+### Phase-two PR readiness
+
+```bash
+opensense pack https://github.com/vllm-project/vllm/issues/12345
+opensense patch https://github.com/vllm-project/vllm/issues/12345 --dry-run
+opensense evidence https://github.com/vllm-project/vllm/issues/12345
+```
+
+`pack` writes Markdown files under `.opensense/packs/<owner>__<repo>/<issue-number>/`. `patch --dry-run` only reports suitability and does not modify source files. `evidence` creates PR summary, test evidence, and maintainer note drafts from an existing pack. If tests were not actually run, the evidence says `Not run.`
 
 `issue` 会回答：
 
