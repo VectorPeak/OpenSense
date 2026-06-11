@@ -18,7 +18,7 @@ Every day, OpenSense should help answer:
 
 OpenSense starts as a Python CLI.
 
-The intended MVP commands are:
+The current MVP commands are:
 
 ```bash
 opensense init
@@ -30,9 +30,9 @@ opensense issue <owner/repo#issue> --plan
 opensense repo <owner/repo>
 ```
 
-The first version should work without an LLM key. With an LLM key, it should produce better summaries, risk explanations, and PR plans.
+The first version works without an LLM key. With an LLM key, `daily` can use a larger candidate pool and ask the model to pick the most realistic opportunities, explain risks, and suggest the next `issue --plan` command. `opensense daily --no-llm` keeps the old rule-only path.
 
-Watched skills describe the user's preferred contribution surface, such as `python`, `llm`, `cli`, `tests`, or `github-actions`. `daily` uses them as a lightweight ranking boost when a candidate issue matches the user's skill tags.
+Watched skills describe the user's preferred contribution surface, such as `python`, `llm`, `cli`, `tests`, or `github-actions`. `daily` uses them as a lightweight ranking signal before the optional LLM pass.
 
 ## Non-Goals
 
