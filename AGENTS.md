@@ -17,10 +17,12 @@ OpenSense is a daily PR opportunity finder for known open-source repositories.
 The MVP should optimize:
 
 ```text
-watched repos + skills -> daily ranking -> issue -> PR plan
+watched repos + skills -> daily candidates -> issue review -> PR plan
 ```
 
 Avoid expanding the first version into a general open-source intelligence dashboard.
+
+`opensense daily` defaults to LLM-assisted finding when an LLM key is configured. It still shows the deterministic candidate table first, and `opensense daily --no-llm` keeps the flow fully rule-based.
 
 ## Highest Priority Rules
 
