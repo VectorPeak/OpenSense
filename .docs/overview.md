@@ -41,3 +41,13 @@ Watched skills describe the user's preferred contribution surface, such as `pyth
 - Do not guarantee merge success.
 - Do not become a general GitHub trend dashboard.
 - Do not search all of GitHub by default.
+
+## Phase Two Direction
+
+The next major direction is agent-native PR readiness:
+
+```text
+daily candidates -> one issue -> context pack -> risk check -> evidence -> agent handoff
+```
+
+Phase two should add `pack`, `patch --dry-run`, and `evidence` before any automatic patch or PR workflow. See `.docs/phase-two-agent-pr-workflow.md` and `.docs/goal.md`.

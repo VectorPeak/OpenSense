@@ -9,6 +9,8 @@ Keep this file under 300 lines. Move detailed guidance into `.docs/`.
 - Understand the project: `.docs/overview.md`
 - Run, build, or configure locally: `.docs/development.md`
 - Check early decisions and trade-offs: `.docs/decisions.md`
+- Plan phase-two agent PR readiness: `.docs/phase-two-agent-pr-workflow.md`
+- Follow the current execution target: `.docs/goal.md`
 
 ## Product Boundary
 
@@ -23,6 +25,8 @@ watched repos + skills -> daily candidates -> issue review -> PR plan
 Avoid expanding the first version into a general open-source intelligence dashboard.
 
 `opensense daily` defaults to LLM-assisted finding when an LLM key is configured. It still shows the deterministic candidate table first, and `opensense daily --no-llm` keeps the flow fully rule-based.
+
+Phase two should stay read-first: context packs, evidence, dry-run suitability, and agent handoff before any source-code modification or PR automation.
 
 ## Highest Priority Rules
 

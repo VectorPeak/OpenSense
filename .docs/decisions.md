@@ -94,6 +94,21 @@ Reason:
 
 Status: accepted
 
+### 2026-06-11: Phase two is PR readiness, not auto PR
+
+Decision:
+
+Phase two should focus on context packs, evidence, dry-run suitability checks, and agent handoff. It should not automatically modify source code, comment on issues, push branches, or open PRs.
+
+Reason:
+
+- The project should help users create higher-quality PR attempts, not more PR volume.
+- Coding agents need grounded context and safety constraints before they can be useful.
+- Read-only pack and evidence workflows are easier to test, inspect, and trust.
+- Automatic PR creation should wait until dry-run gates, evidence, and audit boundaries are reliable.
+
+Status: accepted
+
 ## Open Questions
 
 - Which exact GitHub repo should represent OpenClaw in examples?
