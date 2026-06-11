@@ -52,13 +52,27 @@ Status: accepted
 
 Decision:
 
-The first version should support LLM configuration in `opensense init`, but core ranking must work without an LLM key.
+The first version supports LLM configuration in `opensense init`, but core ranking must work without an LLM key.
 
 Reason:
 
 - LLMs are valuable for issue summaries, risk explanations, and PR plans.
 - Deterministic scoring is easier to test and trust.
 - The CLI should remain useful even when API keys are missing.
+
+Status: accepted
+
+### 2026-06-11: Daily defaults to LLM-assisted finding
+
+Decision:
+
+`opensense daily` should try LLM-assisted finding by default. Users can run `opensense daily --no-llm` for a pure deterministic run.
+
+Reason:
+
+- The valuable AI moment is not only planning a selected issue; it is helping choose which candidate deserves attention today.
+- The deterministic score remains the fact layer and fallback.
+- `--candidate-pool` gives the LLM a wider but bounded set of issues without turning OpenSense into broad GitHub search.
 
 Status: accepted
 
@@ -69,7 +83,7 @@ Decision:
 The MVP should optimize the path:
 
 ```text
-watched repos + skills -> daily ranking -> issue -> PR plan
+watched repos + skills -> daily candidates -> issue review -> PR plan
 ```
 
 Reason:
