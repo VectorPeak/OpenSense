@@ -82,6 +82,7 @@ opensense init --check
 # 4. 获取今天值得看的 PR 候选 issue
 opensense daily
 opensense daily --llm
+opensense daily --llm --candidate-pool 50
 
 # 5. 分析一个候选 issue，并可选生成 PR 前计划
 opensense issue vllm-project/vllm#12345
@@ -140,13 +141,14 @@ OpenSense 结果
    ...
 ```
 
-如果已经配置了 LLM，可以让 OpenSense 对当天候选再做一层判断：
+如果已经配置了 LLM，可以让 OpenSense 在更大的候选池里帮你继续找：
 
 ```bash
 opensense daily --llm
+opensense daily --llm --candidate-pool 50
 ```
 
-LLM 不会替代规则排序，它只会在候选列表下面补一段分析：今天优先看哪个 issue、为什么、有哪些风险，以及下一条应该执行的 `opensense issue ... --plan` 命令。
+这时 OpenSense 会先用 GitHub API 拉取更多候选 issue，再用确定性规则做粗排，最后把候选池交给 LLM 判断：今天优先看哪几个、为什么、有哪些风险，以及下一条应该执行的 `opensense issue ... --plan` 命令。
 
 选中一个 issue 后，再用 `issue --plan` 生成 PR 前计划：
 
@@ -258,7 +260,7 @@ opensense init \
   --llm-model-env OPENSENSE_LLM_MODEL
 ```
 
-配置文件只保存环境变量名，不保存原始 API key。LLM 配置同时会被 `daily --llm` 和 `issue --plan` 使用。
+配置文件只保存环境变量名，不保存原始 API key。LLM 配置同时会被 `daily --llm` 和 `issue --plan` 使用。`daily --llm` 更偏“帮你找”，`issue --plan` 更偏“帮你规划一个已经选中的 issue”。
 
 ### 2. 关注仓库和技术栈
 
@@ -441,7 +443,7 @@ opensense --help
 
 ### 必须配置 LLM 吗？
 
-不需要。没有 LLM 时，OpenSense 仍然可以使用确定性规则完成候选筛选和排序；配置 LLM 后，`daily --llm` 会分析当天候选，`issue --plan` 会提供更深入的摘要、风险判断和 PR 前计划。
+不需要。没有 LLM 时，OpenSense 仍然可以使用确定性规则完成候选筛选和排序；配置 LLM 后，`daily --llm` 会从更大的候选池里辅助寻找更值得动手的 issue，`issue --plan` 会提供更深入的摘要、风险判断和 PR 前计划。
 
 ### 默认 watchlist 可以修改吗？
 
