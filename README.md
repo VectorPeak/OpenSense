@@ -396,6 +396,41 @@ src/opensense/
 
 当前实现使用 Typer/Rich CLI、GitHub API client、TOML 本地状态、确定性评分，以及可选的 LLM 辅助规划。
 
+## 常见问题
+
+### 可以通过 pip 安装吗？
+
+可以。OpenSense 已经使用标准 `pyproject.toml` 和 `src/` 包结构，并配置了 `opensense` 命令行入口。
+
+不过 PyPI 上的 `opensense` 名称已经被其他项目占用，因此推荐使用 `opensense-radar` 作为发布包名，同时保持安装后的命令名称不变：
+
+```bash
+pip install opensense-radar
+opensense init
+opensense daily
+```
+
+正式发布到 PyPI 前还需要完成：
+
+- 确定发布包名，例如 `opensense-radar`
+- 在 `pyproject.toml` 中补充作者、项目主页、仓库地址和分类信息
+- 构建并检查 wheel 与源码包
+- 配置 PyPI Trusted Publishing 或发布 token
+- 添加发布工作流，并在干净环境中验证安装后的 `opensense` 命令
+- 使用版本号和 Git tag 管理每次发布
+
+### 必须配置 GitHub Token 吗？
+
+不是必须，但强烈推荐。没有 token 时 GitHub API 的访问额度较低，扫描多个默认仓库时更容易触发限流。
+
+### 必须配置 LLM 吗？
+
+不需要。没有 LLM 时，OpenSense 仍然可以使用确定性规则完成候选筛选和排序；配置 LLM 后，`issue --plan` 会提供更深入的摘要、风险判断和 PR 前计划。
+
+### 默认 watchlist 可以修改吗？
+
+可以。`opensense init` 会提供一份 Agent / RAG 默认列表，你可以使用 `watch repo add` 和 `watch skill add` 继续扩展。普通重复执行 `init` 不会覆盖已有列表，`init --force` 会恢复默认配置。
+
 ## 许可证
 
 本项目采用 MIT License，详见 [LICENSE](LICENSE)。
