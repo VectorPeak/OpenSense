@@ -2,20 +2,28 @@
 
 # OpenSense
 
-Daily PR opportunity finder for known open-source repositories
+面向知名开源项目的每日 PR 机会发现工具
 
 ![status](https://img.shields.io/badge/status-mvp%20cli-15803D)
 ![python](https://img.shields.io/badge/python-3.10+-blue)
 ![cli](https://img.shields.io/badge/interface-CLI-07C983)
 ![llm](https://img.shields.io/badge/LLM-optional-purple)
 
-简体中文 | English later
+简体中文
 
 </div>
 
 ```text
-known repos  ->  daily issue ranking  ->  issue --plan  ->  PR attempt
+关注仓库  ->  每日 issue 排序  ->  issue --plan  ->  PR 尝试
 ```
+
+## 解决痛点
+
+想给知名开源项目提交 PR，但每天真正卡住的不是写代码，而是选题。翻很多 issue，常常会遇到：描述不清、范围太大、已经有人在做、维护者可能不接受、或者项目最近根本不太合并外部贡献。
+
+OpenSense 关注的是更实际的开源贡献流程：先从你自己关心的仓库开始，例如 vLLM、FastAPI、HTTPX，再结合你的技术栈标签，例如 `python`、`llm`、`cli`、`tests`，每天筛出更值得打开的小 issue。
+
+它会优先看 issue 是否近期更新、评论是否过多、是否无人认领、标签是否偏 bug fix 或 tests、仓库 star 和 PR 合并信号是否健康，并在你动手前生成一份 PR 前计划，帮助你判断：这个 issue 值不值得做、应该先读哪里、要补哪些测试、是否应该先留言确认。
 
 ## 项目简介
 
@@ -25,7 +33,7 @@ OpenSense 是一个 Python CLI，目标是帮助开发者每天从自己关注�
 
 没有 LLM key 也能运行：默认使用规则评分。有 LLM key 时，可以获得更深入的 issue 分析、风险判断和 PR 前计划。
 
-## Why OpenSense
+## 为什么做 OpenSense
 
 参与开源项目时，真正耗时间的往往不是“点开 issue”，而是判断：
 
@@ -39,22 +47,22 @@ OpenSense 是一个 Python CLI，目标是帮助开发者每天从自己关注�
 OpenSense 试图把这个判断流程沉淀成每天可重复的命令行工作流。
 
 ```text
-daily browsing  ->  short candidate list  ->  focused issue analysis  ->  PR-ready plan
+每日浏览  ->  候选 issue 短列表  ->  单个 issue 分析  ->  PR 前计划
 ```
 
-## Quick Start
+## 快速开始
 
-OpenSense currently ships an MVP CLI with five top-level commands:
+OpenSense 当前提供一个 MVP 版本的 CLI，包含五个顶层命令：
 
 ```text
 init -> watch -> daily -> issue -> repo
 ```
 
 ```bash
-# 1. Create local OpenSense config
+# 1. 创建本地 OpenSense 配置
 opensense init
 
-# 2. Add repositories and skills you care about
+# 2. 添加你关注的仓库和技术栈标签
 opensense watch repo add vllm-project/vllm
 opensense watch repo add pallets/flask
 opensense watch repo add encode/httpx
@@ -62,22 +70,22 @@ opensense watch skill add python
 opensense watch skill add llm
 opensense watch skill add cli
 
-# 3. Check local config and optional API env vars
+# 3. 检查本地配置和可选 API 环境变量
 opensense init --check
 
-# 4. Get today's PR candidates
+# 4. 获取今天值得看的 PR 候选 issue
 opensense daily
 
-# 5. Inspect one promising issue and optionally generate a PR plan
+# 5. 分析一个候选 issue，并可选生成 PR 前计划
 opensense issue vllm-project/vllm#12345
 opensense issue vllm-project/vllm#12345 --plan --no-llm
 
-# 6. Check whether repositories look PR-friendly
+# 6. 判断仓库是否适合投入 PR
 opensense repo vllm-project/vllm --skills python,llm
 opensense repo vllm-project/vllm pallets/flask --skills python
 ```
 
-LLM is optional. If configured, it improves issue summaries and PR planning:
+LLM 是可选能力。配置后，它可以增强 issue 总结、风险判断和 PR 前计划：
 
 ```bash
 export OPENSENSE_LLM_API_KEY=...
@@ -86,19 +94,19 @@ export OPENSENSE_LLM_MODEL=gpt-5.5
 opensense init --llm-api-key-env OPENSENSE_LLM_API_KEY
 ```
 
-OpenSense also reads `GITHUB_TOKEN` by default for GitHub API rate limits. It should never store raw API keys in committed files. Configuration should reference environment variables.
+OpenSense 默认读取 `GITHUB_TOKEN` 来提高 GitHub API 访问额度。它不应该把原始 API key 写进已提交文件，配置里只应该引用环境变量名。
 
-## Core Workflow
+## 核心流程
 
-The MVP path is implemented as a thin CLI. Network-backed commands use the GitHub API and deterministic rules first; LLM support is optional.
+当前 MVP 是一个轻量 CLI。需要网络的命令优先使用 GitHub API 和确定性规则；LLM 只作为可选增强。
 
-### 1. Initialize
+### 1. 初始化
 
 ```bash
 opensense init
 ```
 
-Creates local state:
+创建本地状态目录：
 
 ```text
 .opensense/
@@ -108,45 +116,45 @@ Creates local state:
   reports/
 ```
 
-`init` should configure:
+`init` 负责配置：
 
-- GitHub token environment variable
-- LLM provider and model
-- LLM API key environment variable
-- daily ranking preferences
-- local cache/report paths
+- GitHub token 环境变量名
+- LLM 服务和模型
+- LLM API key 环境变量名
+- 每日排序偏好
+- 本地缓存和报告路径
 
-### 2. Watch Known Repositories And Skills
+### 2. 关注仓库和技术栈
 
 ```bash
 opensense watch repo add vllm-project/vllm
 opensense watch skill add python
 ```
 
-OpenSense is watchlist-first. It starts from repositories you intentionally care about and skills that match your contribution strengths instead of searching the whole internet by default.
+OpenSense 采用 watchlist-first 的方式。它默认从你主动关注的仓库和匹配你贡献优势的技术栈出发，而不是一开始就搜索整个互联网。
 
-### 3. Get Daily Candidates
+### 3. 获取每日候选
 
 ```bash
 opensense daily
 ```
 
-The daily command scans watched repositories and returns a short list of candidate issues. Watched skills lightly boost matching issues, so `python`, `llm`, `cli`, or `tests` can pull better-fit work upward without becoming the only scoring rule.
+`daily` 会扫描已关注仓库，并返回一份短候选列表。已关注的技术栈会对匹配 issue 产生轻量加分，例如 `python`、`llm`、`cli`、`tests` 可以把更适合你的任务排到更靠前的位置，但它不会成为唯一评分规则。
 
-Useful filters:
+常用筛选参数：
 
 ```bash
 opensense daily --min-stars 500 --updated-days 14 --max-comments 10 --limit 5
 ```
 
-Each recommendation explains:
+每条推荐会说明：
 
-- total score
-- likely contribution type
-- why it looks approachable
-- suggested next command
+- 总分
+- 可能的贡献类型
+- 为什么看起来适合入手
+- 建议执行的下一条命令
 
-Example output:
+示例输出：
 
 ```text
 Daily PR candidates
@@ -155,119 +163,119 @@ Daily PR candidates
 1  vllm-project/vllm#12345  82     bug fix   good first issue label      opensense issue vllm-project/vllm#12345
 ```
 
-### 4. Inspect And Plan An Issue
+### 4. 分析并规划单个 issue
 
 ```bash
 opensense issue vllm-project/vllm#12345
 opensense issue vllm-project/vllm#12345 --plan
 ```
 
-`issue` answers:
+`issue` 会回答：
 
-- What is this issue about?
-- Does it look like bug fix, tests, docs, or feature work?
-- Is it suitable for a small PR?
-- Which deterministic signals make it look approachable?
-- Which rule-based risks should you check before coding?
+- 这个 issue 在说什么？
+- 它更像 bug fix、tests、docs，还是 feature？
+- 它是否适合做成一个小 PR？
+- 哪些确定性信号说明它值得尝试？
+- 写代码前应该先检查哪些规则风险？
 
-`issue --plan` turns one candidate issue into a pre-PR checklist:
+`issue --plan` 会把一个候选 issue 转成 PR 前检查清单：
 
-- problem summary
-- likely contribution type
-- first files or modules to inspect
-- suggested implementation path
-- test and validation checklist
-- whether to comment before coding
-- PR title/body draft outline
+- 问题摘要
+- 可能的贡献类型
+- 优先阅读的文件或模块
+- 建议实现路径
+- 测试与验证清单
+- 是否应该在编码前先留言确认
+- PR 标题和正文草稿轮廓
 
-### 5. Evaluate Repositories
+### 5. 评估仓库
 
 ```bash
 opensense repo vllm-project/vllm --skills python,llm
 ```
 
-`repo` checks lightweight repository signals before you spend serious time on a PR:
+`repo` 会在你投入大量时间前，先检查仓库层面的轻量信号：
 
-- repository stars
-- recent merged PRs
-- open PR backlog
-- stale PR ratio
-- external contributor merges
-- language and skill overlap
+- 仓库 star 数
+- 最近合并的 PR
+- open PR 积压情况
+- stale PR 比例
+- 外部贡献者 PR 合并情况
+- 仓库语言和你的技能是否重合
 
-## Selection Criteria
+## 选择标准
 
-OpenSense prefers issues that look:
+OpenSense 更偏好这样的 issue：
 
-- small enough for a focused PR
-- recently active
-- unassigned
-- not already covered by a linked PR
-- supported by maintainer signals
-- likely to be bug fix, test, docs, CI, typing, examples, or narrow behavior fixes
-- clear enough to reproduce or verify
+- 足够小，适合做成一个聚焦 PR
+- 最近仍然活跃
+- 没有人认领
+- 没有被已关联 PR 覆盖
+- 有维护者信号支撑
+- 更像 bug fix、test、docs、CI、typing、examples 或窄范围行为修复
+- 足够清晰，可以复现或验证
 
-OpenSense should down-rank issues that look:
+OpenSense 会降低这类 issue 的优先级：
 
-- stale or abandoned
-- heavily debated without conclusion
-- blocked on design decisions
-- already claimed by another contributor
-- likely to require broad architecture changes
-- dependent on private context, hard benchmarks, or unclear reproduction
+- 长期无人维护或疑似废弃
+- 讨论很多但没有结论
+- 被设计决策阻塞
+- 已经被其他贡献者认领
+- 可能需要大范围架构修改
+- 依赖私有上下文、困难 benchmark 或不清晰的复现路径
 
-## MVP Scope
+## MVP 范围
 
-OpenSense v1 focuses on contribution triage and planning.
+OpenSense v1 聚焦开源贡献的筛选和规划。
 
-It currently does:
+当前已经支持：
 
-- maintain local watchlists for GitHub repositories and personal skills
-- initialize `.opensense/` local state
-- check local config and optional environment variables with `init --check`
-- scan open issues from watched repositories with GitHub API
-- rank candidates using deterministic rule-based signals
-- optionally use LLMs for deeper inspection and PR planning
-- generate a pre-PR plan before the user starts coding
-- run lightweight repository signal checks before deeper PR investment
+- 维护 GitHub 仓库和个人技术栈的本地 watchlist
+- 初始化 `.opensense/` 本地状态
+- 通过 `init --check` 检查本地配置和可选环境变量
+- 使用 GitHub API 扫描已关注仓库的 open issue
+- 使用确定性规则对候选 issue 排序
+- 可选使用 LLM 做更深入的分析和 PR 前计划
+- 在用户开始写代码前生成 PR 前计划
+- 在深入投入 PR 前做轻量仓库信号检查
 
-It does not yet:
+当前还不做：
 
-- automatically modify code
-- open pull requests for the user
-- guarantee that a PR will be accepted or merged
-- replace reading issue threads and contributor guides
-- search all of GitHub by default
-- act as a project management or notification platform
+- 自动修改代码
+- 代替用户打开 PR
+- 保证 PR 会被接受或合并
+- 代替用户阅读 issue 讨论和贡献指南
+- 默认搜索整个 GitHub
+- 作为项目管理或通知平台
 
-## LLM Philosophy
+## LLM 设计原则
 
-LLM support is useful, but OpenSense should not depend on it for basic operation.
+LLM 很有用，但 OpenSense 的基础功能不应该依赖 LLM。
 
-Recommended split:
+推荐职责划分：
 
 ```text
-GitHub API + deterministic scoring  ->  candidate ranking
-LLM-assisted reasoning              ->  summaries, risks, PR plans
+GitHub API + 确定性评分  ->  候选 issue 排序
+LLM 辅助推理             ->  摘要、风险、PR 前计划
 ```
 
-The LLM should explain and plan; it should not be the only source of truth.
+LLM 应该负责解释和规划，但不应该成为唯一事实来源。
 
-## How OpenSense Is Different
+## OpenSense 有什么不同
 
-| Tool | Best for | Search scope | Main output |
+| 工具 | 最适合 | 搜索范围 | 主要输出 |
 | --- | --- | --- | --- |
-| GitSense | Finding issues across GitHub that match your skills | Broad GitHub search | Ranked issue matches and repo radar |
-| good-first-issue / up-for-grabs | Browsing beginner-friendly issue catalogs | Public curated lists | Links to labeled issues |
-| OpenSense | Building a daily contribution workflow around repos you care about | Your watchlist | Daily candidates and PR-ready plans |
+| GitSense | 在 GitHub 全站寻找匹配技能的 issue | 广范围 GitHub 搜索 | issue 匹配排序和 repo radar |
+| good-first-issue / up-for-grabs | 浏览新手友好的 issue 目录 | 公开 curated list | 带标签 issue 链接 |
+| OpenSense | 围绕你关注的仓库建立每日贡献流程 | 你的 watchlist | 每日候选 issue 和 PR 前计划 |
 
-OpenSense is not trying to know everything about open source. It optimizes one action:
+OpenSense 不试图了解整个开源世界。它只优化一个动作：
 
-> Find one small issue today that is worth turning into a serious PR attempt.
+> 今天找到一个值得认真尝试的小 issue，并把它推进成一次 PR 尝试。
 
-## Planned Architecture
+## 计划架构
 
-The current MVP keeps command wiring in a single `cli.py` and splits domain logic by responsibility:
+当前 MVP 暂时把命令接线放在单个 `cli.py` 中，并按职责拆分领域逻辑：
 
 ```text
 src/opensense/
@@ -294,11 +302,11 @@ src/opensense/
     watchlist.py
 ```
 
-The first implementation should stay thin: Typer/Rich CLI, GitHub API client, TOML/JSON local state, deterministic scoring, and optional LLM-assisted planning.
+第一版实现应该保持轻量：Typer/Rich CLI、GitHub API client、TOML/JSON 本地状态、确定性评分，以及可选的 LLM 辅助规划。
 
-## Status
+## 当前状态
 
-OpenSense currently has the first runnable MVP CLI:
+OpenSense 当前已经具备第一版可运行 MVP CLI：
 
 - `opensense init`
 - `opensense watch repo add`
@@ -309,6 +317,6 @@ OpenSense currently has the first runnable MVP CLI:
 - `opensense issue`
 - `opensense repo`
 
-## License
+## 许可证
 
-License has not been selected yet.
+暂未选择许可证。
