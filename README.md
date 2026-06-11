@@ -31,7 +31,7 @@ OpenSense 是一个 Python CLI，目标是帮助开发者每天从自己关注�
 
 它不是全网 issue 搜索器，也不是自动写 PR 的机器人。OpenSense 更像一个个人开源贡献工作台：初始化时会提供一份以 Agent、RAG 和推理基础设施为主的默认 watchlist，你也可以继续加入自己关心的仓库和技术栈。OpenSense 每天扫描这些项目，筛出更适合今天下手的小 issue。
 
-没有 LLM key 也能运行：默认使用规则评分。有 LLM key 时，可以获得更深入的 issue 分析、风险判断和 PR 前计划。
+没有 LLM key 也能运行：OpenSense 会先用规则评分做基础排序；有 LLM key 时，`daily` 会默认追加候选解释、风险判断和下一步建议。
 
 ## 为什么做 OpenSense
 
