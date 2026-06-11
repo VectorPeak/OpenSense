@@ -7,6 +7,7 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from opensense.cli import app
+from opensense.config import DEFAULT_REPOSITORIES, DEFAULT_SKILLS
 from opensense.models import Issue, RadarResult
 
 
@@ -15,6 +16,10 @@ runner = CliRunner()
 
 def read_toml(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
+
+
+def default_repository_tables() -> list[dict[str, str]]:
+    return [{"name": repo} for repo in DEFAULT_REPOSITORIES]
 
 
 def test_init_creates_local_state_without_storing_raw_api_key(tmp_path: Path) -> None:
@@ -41,6 +46,9 @@ def test_init_creates_local_state_without_storing_raw_api_key(tmp_path: Path) ->
     assert config["auth"]["llm_api_key_env"] == "OPENAI_API_KEY"
     assert "sk-" not in str(config).lower()
     assert "github_pat_" not in str(config).lower()
+    watchlist = read_toml(state_dir / "watchlist.toml")
+    assert watchlist["repositories"] == default_repository_tables()
+    assert watchlist["skills"] == list(DEFAULT_SKILLS)
 
 
 def test_watch_repo_add_persists_repository_and_list_shows_it(tmp_path: Path) -> None:
@@ -51,7 +59,7 @@ def test_watch_repo_add_persists_repository_and_list_shows_it(tmp_path: Path) ->
     assert add_result.exit_code == 0, add_result.output
 
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
+    assert watchlist["repositories"] == [*default_repository_tables(), {"name": "fastapi/fastapi"}]
 
     list_result = runner.invoke(app, ["watch", "repo", "list", "--workspace", str(tmp_path)])
     assert list_result.exit_code == 0, list_result.output
@@ -94,8 +102,8 @@ def test_init_is_idempotent_and_keeps_watchlist(tmp_path: Path) -> None:
 
     assert second_init.exit_code == 0, second_init.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
-    assert watchlist["skills"] == ["python"]
+    assert watchlist["repositories"] == [*default_repository_tables(), {"name": "fastapi/fastapi"}]
+    assert watchlist["skills"] == [*DEFAULT_SKILLS, "python"]
 
 
 def test_watch_repo_add_does_not_duplicate_repository(tmp_path: Path) -> None:
@@ -106,7 +114,7 @@ def test_watch_repo_add_does_not_duplicate_repository(tmp_path: Path) -> None:
 
     assert duplicate.exit_code == 0, duplicate.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
+    assert watchlist["repositories"] == [*default_repository_tables(), {"name": "fastapi/fastapi"}]
 
 
 def test_watch_skill_add_persists_skill_and_list_shows_it(tmp_path: Path) -> None:
@@ -118,7 +126,7 @@ def test_watch_skill_add_persists_skill_and_list_shows_it(tmp_path: Path) -> Non
     assert add_python.exit_code == 0, add_python.output
     assert add_llm.exit_code == 0, add_llm.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["skills"] == ["python", "llm"]
+    assert watchlist["skills"] == [*DEFAULT_SKILLS, "python", "llm"]
 
     list_result = runner.invoke(app, ["watch", "skill", "list", "--workspace", str(tmp_path)])
     assert list_result.exit_code == 0, list_result.output
@@ -133,8 +141,12 @@ def test_watch_repo_and_skill_do_not_overwrite_each_other(tmp_path: Path) -> Non
     assert runner.invoke(app, ["watch", "repo", "add", "encode/httpx", "--workspace", str(tmp_path)]).exit_code == 0
 
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}, {"name": "encode/httpx"}]
-    assert watchlist["skills"] == ["python"]
+    assert watchlist["repositories"] == [
+        *default_repository_tables(),
+        {"name": "fastapi/fastapi"},
+        {"name": "encode/httpx"},
+    ]
+    assert watchlist["skills"] == [*DEFAULT_SKILLS, "python"]
 
 
 def test_watch_skill_add_does_not_duplicate_case_insensitive_skill(tmp_path: Path) -> None:
@@ -145,7 +157,7 @@ def test_watch_skill_add_does_not_duplicate_case_insensitive_skill(tmp_path: Pat
 
     assert duplicate.exit_code == 0, duplicate.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["skills"] == ["python"]
+    assert watchlist["skills"] == [*DEFAULT_SKILLS, "python"]
 
 
 def test_watch_skill_add_rejects_invalid_skill(tmp_path: Path) -> None:
@@ -177,7 +189,7 @@ def test_old_watch_add_and_list_are_not_available() -> None:
         assert result.exit_code != 0
 
 
-def test_init_force_clears_repositories_and_skills(tmp_path: Path) -> None:
+def test_init_force_restores_default_repositories_and_skills(tmp_path: Path) -> None:
     assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
     assert runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
     assert runner.invoke(app, ["watch", "skill", "add", "python", "--workspace", str(tmp_path)]).exit_code == 0
@@ -186,8 +198,8 @@ def test_init_force_clears_repositories_and_skills(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
-    assert watchlist["repositories"] == []
-    assert watchlist["skills"] == []
+    assert watchlist["repositories"] == default_repository_tables()
+    assert watchlist["skills"] == list(DEFAULT_SKILLS)
 
 
 def test_init_check_warns_for_missing_optional_env_vars_after_init(tmp_path: Path) -> None:

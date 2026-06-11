@@ -29,7 +29,7 @@ OpenSense 关注的是更实际的开源贡献流程：先从你自己关心的�
 
 OpenSense 是一个 Python CLI，目标是帮助开发者每天从自己关注的知名 GitHub 开源项目里，找到“小而靠谱、较可能被合并”的 issue，并在动手前生成一份 PR 前计划。
 
-它不是全网 issue 搜索器，也不是自动写 PR 的机器人。OpenSense 更像一个个人开源贡献工作台：你维护一份仓库 watchlist，例如 `vllm-project/vllm`、`pallets/flask`、`encode/httpx`，再维护一份技能 watchlist，例如 `python`、`llm`、`cli`，OpenSense 每天扫描这些项目，筛出更适合今天下手的小 issue。
+它不是全网 issue 搜索器，也不是自动写 PR 的机器人。OpenSense 更像一个个人开源贡献工作台：初始化时会提供一份以 Agent、RAG 和推理基础设施为主的默认 watchlist，你也可以继续加入自己关心的仓库和技术栈。OpenSense 每天扫描这些项目，筛出更适合今天下手的小 issue。
 
 没有 LLM key 也能运行：默认使用规则评分。有 LLM key 时，可以获得更深入的 issue 分析、风险判断和 PR 前计划。
 
@@ -62,13 +62,12 @@ init -> watch -> daily -> issue -> repo
 # 1. 创建本地 OpenSense 配置
 opensense init
 
-# 2. 添加你关注的仓库和技术栈标签
-opensense watch repo add vllm-project/vllm
-opensense watch repo add pallets/flask
-opensense watch repo add encode/httpx
+# 2. 查看默认仓库和技术栈，并按需扩展
+opensense watch repo list
+opensense watch skill list
+opensense watch repo add microsoft/autogen
+opensense watch repo add deepset-ai/haystack
 opensense watch skill add python
-opensense watch skill add llm
-opensense watch skill add cli
 
 # 3. 检查本地配置和可选 API 环境变量
 opensense init --check
@@ -87,15 +86,20 @@ opensense repo vllm-project/vllm pallets/flask --skills python
 
 ## 效果演示
 
-先把你关注的仓库和技术栈加入 watchlist：
+`opensense init` 默认会加入 OpenClaw、vLLM、Codex、SGLang、LangChain 和 LlamaIndex，并把 `agent`、`rag` 作为默认技术栈：
 
 ```text
-$ opensense watch repo add vllm-project/vllm
-$ opensense watch repo add triton-lang/triton
-$ opensense watch repo add huggingface/transformers
-$ opensense watch skill add python
-$ opensense watch skill add llm
-$ opensense watch skill add cuda
+$ opensense watch repo list
+openclaw/openclaw
+vllm-project/vllm
+openai/codex
+sgl-project/sglang
+langchain-ai/langchain
+run-llama/llama_index
+
+$ opensense watch skill list
+agent
+rag
 ```
 
 然后运行 `opensense daily`，你会先得到一份短候选列表，而不是继续在 GitHub 页面里反复翻 issue：
@@ -107,20 +111,20 @@ $ opensense daily --min-stars 1000 --limit 8
 正在按仓库信号、issue 小型程度和技能匹配度排序...
 
 OpenSense 结果
-技术栈：python, llm, cuda
+技术栈：agent, rag
 结果：8 个 issue，按适合今天动手的程度排序
 
 1. [9/10] vllm-project/vllm
    Fix CUDA graph memory leak in speculative decoding
    Labels: bug, good first issue
-   为什么匹配：需要 CUDA + Python + LLM 推理知识。
+   为什么匹配：推理基础设施是 Agent / RAG 应用的重要运行底座。
    怎么上手：先看 vllm/spec_decode/worker.py 和相关 graph capture 测试。
    下一步：opensense issue vllm-project/vllm#12345 --plan
 
 2. [8/10] triton-lang/triton
    Type inference fails for constexpr in nested loops
    Labels: bug
-   为什么匹配：Python 编译器内部逻辑，和 GPU kernel 相关。
+   为什么匹配：GPU kernel 和高性能推理相关。
    怎么上手：查 code_generator.py visit_For，并对照相似 issue。
    下一步：opensense issue triton-lang/triton#9547 --plan
 
@@ -185,6 +189,32 @@ opensense init
 - LLM API key 环境变量名
 - 每日排序偏好
 - 本地缓存和报告路径
+
+首次执行 `init` 会创建一份可直接使用的默认 watchlist：
+
+```toml
+skills = ["agent", "rag"]
+
+[[repositories]]
+name = "openclaw/openclaw"
+
+[[repositories]]
+name = "vllm-project/vllm"
+
+[[repositories]]
+name = "openai/codex"
+
+[[repositories]]
+name = "sgl-project/sglang"
+
+[[repositories]]
+name = "langchain-ai/langchain"
+
+[[repositories]]
+name = "run-llama/llama_index"
+```
+
+推荐后续按需加入 `microsoft/autogen`、`deepset-ai/haystack` 等 Agent / RAG 仓库。普通重复执行 `init` 不会覆盖你的 watchlist；`init --force` 会恢复默认列表。
 
 推荐优先配置两个东西：GitHub Token 和 LLM 服务。
 
@@ -295,24 +325,21 @@ opensense repo vllm-project/vllm --skills python,llm
 
 ## 选择标准
 
-OpenSense 更偏好这样的 issue：
+OpenSense 不会只因为一个 issue 带着 `good first issue` 标签，就把它排到前面。真正值得动手的任务，通常还有一些更实际的信号：
 
-- 足够小，适合做成一个聚焦 PR
-- 最近仍然活跃
-- 没有人认领
-- 没有被已关联 PR 覆盖
-- 有维护者信号支撑
-- 更像 bug fix、test、docs、CI、typing、examples 或窄范围行为修复
-- 足够清晰，可以复现或验证
+- 问题描述比较清楚，至少知道从哪里开始复现或验证
+- 改动范围看起来可控，能收敛成一个目标明确的 PR
+- 最近还有维护者或贡献者参与讨论，不像已经被遗忘
+- 暂时没人认领，也没有正在处理同一问题的关联 PR
+- 更接近 bug fix、补测试、修 CI、typing、文档示例或小范围行为修正
 
-OpenSense 会降低这类 issue 的优先级：
+有些 issue 看上去很有意思，但不一定适合今天开始做。遇到下面这些情况，OpenSense 会先把它们往后放：
 
-- 长期无人维护或疑似废弃
-- 讨论很多但没有结论
-- 被设计决策阻塞
-- 已经被其他贡献者认领
-- 可能需要大范围架构修改
-- 依赖私有上下文、困难 benchmark 或不清晰的复现路径
+- 讨论持续了很久，维护者仍没有明确想要的方案
+- 已经有人在处理，或者现有 PR 基本覆盖了问题
+- 表面是小修复，实际可能牵动大量架构和兼容性设计
+- 必须依赖内部数据、特殊硬件或很难搭建的 benchmark 才能验证
+- issue 描述太少，连问题是否还能复现都无法确认
 
 ## MVP 范围
 
@@ -338,36 +365,36 @@ OpenSense v1 聚焦开源贡献的筛选和规划。
 - 默认搜索整个 GitHub
 - 作为项目管理或通知平台
 
-## 计划架构
+## 架构
 
-当前 MVP 暂时把命令接线放在单个 `cli.py` 中，并按职责拆分领域逻辑：
+OpenSense 当前保持轻量，并按职责拆分 CLI、领域逻辑、外部服务与本地存储：
 
 ```text
 src/opensense/
-  cli.py
-  config.py
-  doctor.py
-  models.py
-
-  github/
-    client.py
-    issues.py
-    radar.py
-
-  core/
-    radar.py
-    scoring.py
-    ranking.py
-    planner.py
-
-  llm/
-    client.py
-
-  storage/
-    watchlist.py
+├── cli.py                      # 注册 CLI 命令并串联完整工作流
+├── config.py                   # 初始化和读取 .opensense 本地配置
+├── doctor.py                   # 检查配置文件、环境变量和状态目录
+├── models.py                   # 定义 issue、评分和仓库信号数据模型
+│
+├── github/                     # GitHub 数据访问层
+│   ├── client.py               # GitHub REST API 基础客户端
+│   ├── issues.py               # 获取并转换 GitHub open issue
+│   └── radar.py                # 收集仓库 PR、issue、语言等信号
+│
+├── core/                       # 排序、评分与规划领域逻辑
+│   ├── radar.py                # 根据仓库信号计算贡献友好度
+│   ├── scoring.py              # 使用确定性规则评估单个 issue
+│   ├── ranking.py              # 结合技术栈匹配对候选 issue 排序
+│   └── planner.py              # 生成规则或 LLM 辅助的 PR 前计划
+│
+├── llm/                        # 可选 LLM 能力
+│   └── client.py               # 调用 OpenAI 兼容的 LLM 服务
+│
+└── storage/                    # 本地状态持久化
+    └── watchlist.py            # 读写仓库和技术栈 watchlist
 ```
 
-第一版实现应该保持轻量：Typer/Rich CLI、GitHub API client、TOML/JSON 本地状态、确定性评分，以及可选的 LLM 辅助规划。
+当前实现使用 Typer/Rich CLI、GitHub API client、TOML 本地状态、确定性评分，以及可选的 LLM 辅助规划。
 
 ## 许可证
 

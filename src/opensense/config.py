@@ -12,6 +12,15 @@ from typing import Any
 
 STATE_DIR_NAME = ".opensense"
 ENV_VAR_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+DEFAULT_REPOSITORIES = (
+    "openclaw/openclaw",
+    "vllm-project/vllm",
+    "openai/codex",
+    "sgl-project/sglang",
+    "langchain-ai/langchain",
+    "run-llama/llama_index",
+)
+DEFAULT_SKILLS = ("agent", "rag")
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,14 @@ def render_config(config: OpenSenseConfig) -> str:
     )
 
 
+def render_default_watchlist() -> str:
+    quoted_skills = ", ".join(f'"{skill}"' for skill in DEFAULT_SKILLS)
+    lines = [f"skills = [{quoted_skills}]", ""]
+    for repo in DEFAULT_REPOSITORIES:
+        lines.extend(["[[repositories]]", f'name = "{repo}"', ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def initialize_state(workspace: Path | None, config: OpenSenseConfig, force: bool = False) -> Path:
     root = state_dir(workspace)
     root.mkdir(parents=True, exist_ok=True)
@@ -96,7 +113,7 @@ def initialize_state(workspace: Path | None, config: OpenSenseConfig, force: boo
 
     watch_path = root / "watchlist.toml"
     if force or not watch_path.exists():
-        watch_path.write_text("skills = []\nrepositories = []\n", encoding="utf-8", newline="\n")
+        watch_path.write_text(render_default_watchlist(), encoding="utf-8", newline="\n")
 
     return root
 

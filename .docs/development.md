@@ -36,10 +36,25 @@ opensense repo <owner/repo>
 Example `watchlist.toml`:
 
 ```toml
-skills = ["python", "llm", "cli"]
+skills = ["agent", "rag"]
+
+[[repositories]]
+name = "openclaw/openclaw"
 
 [[repositories]]
 name = "vllm-project/vllm"
+
+[[repositories]]
+name = "openai/codex"
+
+[[repositories]]
+name = "sgl-project/sglang"
+
+[[repositories]]
+name = "langchain-ai/langchain"
+
+[[repositories]]
+name = "run-llama/llama_index"
 ```
 
 ## Implementation Notes
