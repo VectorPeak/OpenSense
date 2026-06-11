@@ -39,6 +39,21 @@ opensense repo <owner/repo>
   reports/
 ```
 
+Context packs include human-readable Markdown plus machine-readable artifacts:
+
+```text
+.opensense/packs/<owner>__<repo>/<issue-number>/
+  issue.md
+  repo.md
+  files.md
+  tests.md
+  plan.md
+  risks.md
+  agent.md
+  pack.json
+  manifest.json
+```
+
 Example `watchlist.toml`:
 
 ```toml
@@ -69,5 +84,6 @@ name = "run-llama/llama_index"
 - Use LLM for daily candidate interpretation, summaries, risk explanations, and PR plans.
 - Treat GitHub API data and deterministic scoring as the fact layer; LLM output should explain and prioritize, not invent state.
 - Keep phase-two PR readiness commands read-first: `pack` and `evidence` write only under `.opensense/packs/`, while `patch --dry-run` must not modify source files.
+- `pack.json` is the future MCP/agent-facing artifact; `manifest.json` records generation metadata, local repo context, dirty-worktree status, and secret scan status.
 - Keep cache simple until cross-day analytics becomes necessary.
 - Prefer Markdown/Rich output before building a complex HTML report.

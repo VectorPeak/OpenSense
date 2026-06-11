@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 from opensense.config import state_dir
@@ -22,6 +23,8 @@ class PackPaths:
     pr_summary_md: Path
     test_evidence_md: Path
     maintainer_note_md: Path
+    pack_json: Path
+    manifest_json: Path
 
 
 PACK_FILENAMES = (
@@ -55,6 +58,8 @@ def pack_paths(issue_ref: IssueRef, workspace: Path | None = None) -> PackPaths:
         pr_summary_md=root / "pr-summary.md",
         test_evidence_md=root / "test-evidence.md",
         maintainer_note_md=root / "maintainer-note.md",
+        pack_json=root / "pack.json",
+        manifest_json=root / "manifest.json",
     )
 
 
@@ -74,6 +79,17 @@ def write_markdown_files(paths: PackPaths, files: dict[str, str], *, force: bool
     for name, content in files.items():
         target = paths.root / name
         target.write_text(content.rstrip() + "\n", encoding="utf-8", newline="\n")
+        written.append(target)
+    return tuple(written)
+
+
+def write_json_files(paths: PackPaths, files: dict[str, dict[str, object]], *, force: bool = False) -> tuple[Path, ...]:
+    ensure_pack_can_write(paths, tuple(files), force=force)
+    paths.root.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for name, content in files.items():
+        target = paths.root / name
+        target.write_text(json.dumps(content, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
         written.append(target)
     return tuple(written)
 

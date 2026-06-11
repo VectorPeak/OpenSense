@@ -327,7 +327,7 @@ opensense patch https://github.com/vllm-project/vllm/issues/12345 --dry-run
 opensense evidence https://github.com/vllm-project/vllm/issues/12345
 ```
 
-`pack` writes Markdown files under `.opensense/packs/<owner>__<repo>/<issue-number>/`. `patch --dry-run` only reports suitability and does not modify source files. `evidence` creates PR summary, test evidence, and maintainer note drafts from an existing pack. If tests were not actually run, the evidence says `Not run.`
+`pack` writes Markdown files plus `pack.json` and `manifest.json` under `.opensense/packs/<owner>__<repo>/<issue-number>/`. `patch --dry-run` only reports suitability and does not modify source files. `evidence` creates PR summary, test evidence, and maintainer note drafts from an existing pack. If tests were not actually run, the evidence says `Not run.`
 
 `issue` 会回答：
 

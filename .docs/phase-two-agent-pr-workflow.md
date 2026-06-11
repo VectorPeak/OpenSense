@@ -31,6 +31,8 @@ Generate a local context pack:
   plan.md
   risks.md
   agent.md
+  pack.json
+  manifest.json
 ```
 
 The pack should include:
@@ -50,6 +52,8 @@ Default behavior:
 - Write only under `.opensense/packs/`.
 - Do not modify source code.
 - Do not create branches, commits, comments, or PRs.
+
+`pack.json` should expose facts, inferences, risks, unknowns, test guidance, agent constraints, and provenance for future MCP tools. `manifest.json` should record generated files, source commit, dirty-worktree state, skipped sensitive paths, and secret scan status.
 
 ### `opensense patch <issue-url> --dry-run`
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 from typer.testing import CliRunner
@@ -60,6 +61,8 @@ def test_pack_paths_are_stable(tmp_path: Path) -> None:
     assert paths.issue_md == paths.root / "issue.md"
     assert paths.agent_md == paths.root / "agent.md"
     assert paths.pr_summary_md == paths.root / "pr-summary.md"
+    assert paths.pack_json == paths.root / "pack.json"
+    assert paths.manifest_json == paths.root / "manifest.json"
 
 
 def test_pack_writes_read_only_context_files(monkeypatch, tmp_path: Path) -> None:
@@ -73,13 +76,47 @@ def test_pack_writes_read_only_context_files(monkeypatch, tmp_path: Path) -> Non
 
     assert result.exit_code == 0, result.output
     root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
-    expected = {"issue.md", "repo.md", "files.md", "tests.md", "plan.md", "risks.md", "agent.md"}
+    expected = {"issue.md", "repo.md", "files.md", "tests.md", "plan.md", "risks.md", "agent.md", "pack.json", "manifest.json"}
     assert expected == {path.name for path in root.iterdir()}
     assert "Fix agent retrieval bug" in (root / "issue.md").read_text(encoding="utf-8")
     assert "untrusted user-supplied text" in (root / "issue.md").read_text(encoding="utf-8")
     assert "Do not open a PR, push, commit, or comment" in (root / "agent.md").read_text(encoding="utf-8")
     assert "Not run." in (root / "tests.md").read_text(encoding="utf-8")
     assert source_file.read_text(encoding="utf-8") == "print('unchanged')\n"
+
+
+def test_pack_writes_structured_json_and_manifest(monkeypatch, tmp_path: Path) -> None:
+    issue = sample_issue()
+    (tmp_path / "README.md").write_text("# Example\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / ".env").write_text("SHOULD_NOT_BE_READ=1\n", encoding="utf-8")
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
+
+    result = runner.invoke(app, ["pack", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    pack = json.loads((root / "pack.json").read_text(encoding="utf-8"))
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    assert pack["schema_version"] == 1
+    assert pack["issue"]["ref"] == "owner/repo#7"
+    assert pack["facts"]["repo_context"]["present_files"] == ["README.md", "pyproject.toml"]
+    assert pack["facts"]["repo_context"]["workspace"] == "."
+    assert "tests" in pack["facts"]["repo_context"]["present_directories"]
+    assert pack["test_guidance"]["status"] == "not_run"
+    assert "uv run pytest" in pack["test_guidance"]["suggested_commands"]
+    assert manifest["issue_ref"] == "owner/repo#7"
+    assert manifest["kind"] == "opensense.pack_manifest"
+    assert manifest["pack_id"] == "owner__repo/7"
+    assert manifest["issue_url"] == "https://github.com/owner/repo/issues/7"
+    assert manifest["safety"]["source_modified"] is False
+    assert manifest["safety"]["github_write_performed"] is False
+    assert manifest["secret_scan"]["status"] == "passed"
+    assert ".env" in manifest["secret_scan"]["skipped_sensitive_paths"]
+    assert ".opensense/" in manifest["secret_scan"]["skipped_sensitive_paths"]
+    assert "manifest.json" in manifest["generated_files"]
 
 
 def test_pack_does_not_overwrite_without_force(monkeypatch, tmp_path: Path) -> None:
