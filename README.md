@@ -52,14 +52,21 @@ OpenSense 试图把这个判断流程沉淀成每天可重复的命令行工作�
 
 ## 快速开始
 
-OpenSense 当前提供一个 MVP 版本的 CLI，包含五个顶层命令：
+OpenSense 已发布到 PyPI。安装包名是 `opensense-vp`，安装后的命令名是 `opensense`。
+
+```bash
+pip install opensense-vp
+```
+
+当前 CLI 包含五个顶层命令：
 
 ```text
 init -> watch -> daily -> issue -> repo
 ```
 
 ```bash
-# 1. 创建本地 OpenSense 配置
+# 1. 安装并创建本地 OpenSense 配置
+pip install opensense-vp
 opensense init
 
 # 2. 查看默认仓库和技术栈，并按需扩展
@@ -410,9 +417,14 @@ opensense init
 opensense daily
 ```
 
-当前已经完成发布包元数据、wheel / 源码包构建、`twine check`、隔离环境安装验证和 GitHub Actions 发布工作流。
+`opensense-vp` 已经发布到 PyPI，可以直接安装使用：
 
-首次发布前还需要在 PyPI 为 `opensense-vp` 配置 Trusted Publisher，然后在 GitHub 发布 `v0.1.0` Release。后续每次发布都需要先提升版本号，再创建对应 Git tag 和 Release。
+```bash
+pip install opensense-vp
+opensense --help
+```
+
+当前版本已通过 GitHub Actions 发布，并做过 PyPI 安装验证。后续每次发布都需要先提升版本号，再创建对应 Git tag 和 Release。
 
 ### 必须配置 GitHub Token 吗？
 
