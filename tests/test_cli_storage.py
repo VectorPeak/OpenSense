@@ -43,26 +43,26 @@ def test_init_creates_local_state_without_storing_raw_api_key(tmp_path: Path) ->
     assert "github_pat_" not in str(config).lower()
 
 
-def test_watch_add_persists_repository_and_list_shows_it(tmp_path: Path) -> None:
+def test_watch_repo_add_persists_repository_and_list_shows_it(tmp_path: Path) -> None:
     init_result = runner.invoke(app, ["init", "--workspace", str(tmp_path)])
     assert init_result.exit_code == 0, init_result.output
 
-    add_result = runner.invoke(app, ["watch", "add", "fastapi/fastapi", "--workspace", str(tmp_path)])
+    add_result = runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)])
     assert add_result.exit_code == 0, add_result.output
 
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
     assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
 
-    list_result = runner.invoke(app, ["watch", "list", "--workspace", str(tmp_path)])
+    list_result = runner.invoke(app, ["watch", "repo", "list", "--workspace", str(tmp_path)])
     assert list_result.exit_code == 0, list_result.output
     assert "fastapi/fastapi" in list_result.output
 
 
-def test_watch_add_rejects_invalid_repository_name(tmp_path: Path) -> None:
+def test_watch_repo_add_rejects_invalid_repository_name(tmp_path: Path) -> None:
     init_result = runner.invoke(app, ["init", "--workspace", str(tmp_path)])
     assert init_result.exit_code == 0, init_result.output
 
-    add_result = runner.invoke(app, ["watch", "add", "not-a-repo", "--workspace", str(tmp_path)])
+    add_result = runner.invoke(app, ["watch", "repo", "add", "not-a-repo", "--workspace", str(tmp_path)])
 
     assert add_result.exit_code != 0
     assert "owner/repo" in add_result.output
@@ -87,24 +87,107 @@ def test_init_rejects_raw_secret_values_for_env_var_options(tmp_path: Path) -> N
 
 def test_init_is_idempotent_and_keeps_watchlist(tmp_path: Path) -> None:
     assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
-    assert runner.invoke(app, ["watch", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "skill", "add", "Python", "--workspace", str(tmp_path)]).exit_code == 0
 
     second_init = runner.invoke(app, ["init", "--workspace", str(tmp_path)])
 
     assert second_init.exit_code == 0, second_init.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
     assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
+    assert watchlist["skills"] == ["python"]
 
 
-def test_watch_add_does_not_duplicate_repository(tmp_path: Path) -> None:
+def test_watch_repo_add_does_not_duplicate_repository(tmp_path: Path) -> None:
     assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
-    assert runner.invoke(app, ["watch", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
 
-    duplicate = runner.invoke(app, ["watch", "add", "fastapi/fastapi", "--workspace", str(tmp_path)])
+    duplicate = runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)])
 
     assert duplicate.exit_code == 0, duplicate.output
     watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
     assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}]
+
+
+def test_watch_skill_add_persists_skill_and_list_shows_it(tmp_path: Path) -> None:
+    assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
+
+    add_python = runner.invoke(app, ["watch", "skill", "add", "Python", "--workspace", str(tmp_path)])
+    add_llm = runner.invoke(app, ["watch", "skill", "add", "llm", "--workspace", str(tmp_path)])
+
+    assert add_python.exit_code == 0, add_python.output
+    assert add_llm.exit_code == 0, add_llm.output
+    watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
+    assert watchlist["skills"] == ["python", "llm"]
+
+    list_result = runner.invoke(app, ["watch", "skill", "list", "--workspace", str(tmp_path)])
+    assert list_result.exit_code == 0, list_result.output
+    assert "python" in list_result.output
+    assert "llm" in list_result.output
+
+
+def test_watch_repo_and_skill_do_not_overwrite_each_other(tmp_path: Path) -> None:
+    assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "skill", "add", "python", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "repo", "add", "encode/httpx", "--workspace", str(tmp_path)]).exit_code == 0
+
+    watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
+    assert watchlist["repositories"] == [{"name": "fastapi/fastapi"}, {"name": "encode/httpx"}]
+    assert watchlist["skills"] == ["python"]
+
+
+def test_watch_skill_add_does_not_duplicate_case_insensitive_skill(tmp_path: Path) -> None:
+    assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "skill", "add", "Python", "--workspace", str(tmp_path)]).exit_code == 0
+
+    duplicate = runner.invoke(app, ["watch", "skill", "add", "python", "--workspace", str(tmp_path)])
+
+    assert duplicate.exit_code == 0, duplicate.output
+    watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
+    assert watchlist["skills"] == ["python"]
+
+
+def test_watch_skill_add_rejects_invalid_skill(tmp_path: Path) -> None:
+    assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
+
+    result = runner.invoke(app, ["watch", "skill", "add", "python,llm", "--workspace", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "Skill must be a single tag" in result.output
+
+
+def test_watch_repo_and_skill_fail_before_init(tmp_path: Path) -> None:
+    commands = [
+        ["watch", "repo", "add", "fastapi/fastapi"],
+        ["watch", "repo", "list"],
+        ["watch", "skill", "add", "python"],
+        ["watch", "skill", "list"],
+    ]
+
+    for command in commands:
+        result = runner.invoke(app, [*command, "--workspace", str(tmp_path)])
+        assert result.exit_code != 0
+        assert "opensense init" in result.output
+
+
+def test_old_watch_add_and_list_are_not_available() -> None:
+    for command in (["watch", "add", "fastapi/fastapi"], ["watch", "list"]):
+        result = runner.invoke(app, command)
+        assert result.exit_code != 0
+
+
+def test_init_force_clears_repositories_and_skills(tmp_path: Path) -> None:
+    assert runner.invoke(app, ["init", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "repo", "add", "fastapi/fastapi", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["watch", "skill", "add", "python", "--workspace", str(tmp_path)]).exit_code == 0
+
+    result = runner.invoke(app, ["init", "--workspace", str(tmp_path), "--force"])
+
+    assert result.exit_code == 0, result.output
+    watchlist = read_toml(tmp_path / ".opensense" / "watchlist.toml")
+    assert watchlist["repositories"] == []
+    assert watchlist["skills"] == []
 
 
 def test_init_check_warns_for_missing_optional_env_vars_after_init(tmp_path: Path) -> None:
@@ -159,6 +242,16 @@ def test_help_exposes_only_five_top_level_product_commands() -> None:
         assert retired_name not in result.output
 
 
+def test_watch_help_exposes_repo_and_skill_groups_only() -> None:
+    result = runner.invoke(app, ["watch", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "repo" in result.output
+    assert "skill" in result.output
+    assert " add " not in result.output
+    assert " list " not in result.output
+
+
 def test_merged_top_level_commands_are_no_longer_available() -> None:
     for command in ("doctor", "inspect", "plan", "radar"):
         result = runner.invoke(app, [command, "--help"])
@@ -177,7 +270,8 @@ def test_daily_points_next_step_to_issue_command(monkeypatch, tmp_path: Path) ->
         repository_stars=900,
     )
 
-    monkeypatch.setattr("opensense.cli.load_watchlist", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.load_repositories", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: [])
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
     monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
     output = StringIO()
@@ -187,6 +281,41 @@ def test_daily_points_next_step_to_issue_command(monkeypatch, tmp_path: Path) ->
 
     assert result.exit_code == 0, result.output
     assert "opensense issue owner/repo#1" in output.getvalue()
+
+
+def test_daily_uses_watched_skills_to_boost_matching_issues(monkeypatch, tmp_path: Path) -> None:
+    python_issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=1,
+        title="Fix Python CLI crash",
+        labels=("bug",),
+        comments=1,
+        repository_stars=900,
+    )
+    generic_issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=2,
+        title="Fix generic CLI crash",
+        labels=("bug",),
+        comments=1,
+        repository_stars=900,
+    )
+
+    monkeypatch.setattr("opensense.cli.load_repositories", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: ["python"])
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [generic_issue, python_issue])
+    output = StringIO()
+    monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
+
+    result = runner.invoke(app, ["daily", "--workspace", str(tmp_path)])
+
+    text = output.getvalue()
+    assert result.exit_code == 0, result.output
+    assert text.index("owner/repo#1") < text.index("owner/repo#2")
+    assert "matches watched skill: python" in text
 
 
 def test_issue_inspects_one_candidate(monkeypatch, tmp_path: Path) -> None:

@@ -22,13 +22,17 @@ The intended MVP commands are:
 
 ```bash
 opensense init
-opensense watch add <owner/repo>
+opensense watch repo add <owner/repo>
+opensense watch skill add <skill>
 opensense daily
-opensense inspect <owner/repo#issue>
-opensense plan <owner/repo#issue>
+opensense issue <owner/repo#issue>
+opensense issue <owner/repo#issue> --plan
+opensense repo <owner/repo>
 ```
 
 The first version should work without an LLM key. With an LLM key, it should produce better summaries, risk explanations, and PR plans.
+
+Watched skills describe the user's preferred contribution surface, such as `python`, `llm`, `cli`, `tests`, or `github-actions`. `daily` uses them as a lightweight ranking boost when a candidate issue matches the user's skill tags.
 
 ## Non-Goals
 

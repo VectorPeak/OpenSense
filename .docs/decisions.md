@@ -62,21 +62,21 @@ Reason:
 
 Status: accepted
 
-### 2026-06-08: MVP command path is daily to plan
+### 2026-06-08: MVP command path is daily to issue plan
 
 Decision:
 
 The MVP should optimize the path:
 
 ```text
-watchlist -> daily ranking -> inspect -> PR plan
+watched repos + skills -> daily ranking -> issue -> PR plan
 ```
 
 Reason:
 
 - The product goal is not general open-source intelligence.
 - The user wants to find one small issue today and turn it into a serious PR attempt.
-- `daily` and `plan` are the strongest habit-forming commands.
+- `daily` and `issue --plan` are the strongest habit-forming commands.
 
 Status: accepted
 
@@ -84,5 +84,4 @@ Status: accepted
 
 - Which exact GitHub repo should represent OpenClaw in examples?
 - Should the first release publish to PyPI as `opensense` or a scoped fallback name?
-- Should `inspect` and `plan` remain separate commands or should `plan` include inspect output?
 - Should the first report format be Markdown only or also static HTML?

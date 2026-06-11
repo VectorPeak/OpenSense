@@ -21,7 +21,7 @@ known repos  ->  daily issue ranking  ->  issue --plan  ->  PR attempt
 
 OpenSense 是一个 Python CLI，目标是帮助开发者每天从自己关注的知名 GitHub 开源项目里，找到“小而靠谱、较可能被合并”的 issue，并在动手前生成一份 PR 前计划。
 
-它不是全网 issue 搜索器，也不是自动写 PR 的机器人。OpenSense 更像一个个人开源贡献工作台：你维护一份 watchlist，例如 `vllm-project/vllm`、`pallets/flask`、`encode/httpx`，OpenSense 每天扫描这些项目，筛出更适合今天下手的小 issue。
+它不是全网 issue 搜索器，也不是自动写 PR 的机器人。OpenSense 更像一个个人开源贡献工作台：你维护一份仓库 watchlist，例如 `vllm-project/vllm`、`pallets/flask`、`encode/httpx`，再维护一份技能 watchlist，例如 `python`、`llm`、`cli`，OpenSense 每天扫描这些项目，筛出更适合今天下手的小 issue。
 
 没有 LLM key 也能运行：默认使用规则评分。有 LLM key 时，可以获得更深入的 issue 分析、风险判断和 PR 前计划。
 
@@ -54,10 +54,13 @@ init -> watch -> daily -> issue -> repo
 # 1. Create local OpenSense config
 opensense init
 
-# 2. Add repositories you care about
-opensense watch add vllm-project/vllm
-opensense watch add pallets/flask
-opensense watch add encode/httpx
+# 2. Add repositories and skills you care about
+opensense watch repo add vllm-project/vllm
+opensense watch repo add pallets/flask
+opensense watch repo add encode/httpx
+opensense watch skill add python
+opensense watch skill add llm
+opensense watch skill add cli
 
 # 3. Check local config and optional API env vars
 opensense init --check
@@ -113,13 +116,14 @@ Creates local state:
 - daily ranking preferences
 - local cache/report paths
 
-### 2. Watch Known Repositories
+### 2. Watch Known Repositories And Skills
 
 ```bash
-opensense watch add vllm-project/vllm
+opensense watch repo add vllm-project/vllm
+opensense watch skill add python
 ```
 
-OpenSense is watchlist-first. It starts from repositories you intentionally care about instead of searching the whole internet by default.
+OpenSense is watchlist-first. It starts from repositories you intentionally care about and skills that match your contribution strengths instead of searching the whole internet by default.
 
 ### 3. Get Daily Candidates
 
@@ -127,7 +131,7 @@ OpenSense is watchlist-first. It starts from repositories you intentionally care
 opensense daily
 ```
 
-The daily command scans watched repositories and returns a short list of candidate issues.
+The daily command scans watched repositories and returns a short list of candidate issues. Watched skills lightly boost matching issues, so `python`, `llm`, `cli`, or `tests` can pull better-fit work upward without becoming the only scoring rule.
 
 Useful filters:
 
@@ -218,7 +222,7 @@ OpenSense v1 focuses on contribution triage and planning.
 
 It currently does:
 
-- maintain a local watchlist of GitHub repositories
+- maintain local watchlists for GitHub repositories and personal skills
 - initialize `.opensense/` local state
 - check local config and optional environment variables with `init --check`
 - scan open issues from watched repositories with GitHub API
@@ -297,8 +301,10 @@ The first implementation should stay thin: Typer/Rich CLI, GitHub API client, TO
 OpenSense currently has the first runnable MVP CLI:
 
 - `opensense init`
-- `opensense watch add`
-- `opensense watch list`
+- `opensense watch repo add`
+- `opensense watch repo list`
+- `opensense watch skill add`
+- `opensense watch skill list`
 - `opensense daily`
 - `opensense issue`
 - `opensense repo`

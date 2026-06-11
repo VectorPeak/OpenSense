@@ -96,7 +96,7 @@ def initialize_state(workspace: Path | None, config: OpenSenseConfig, force: boo
 
     watch_path = root / "watchlist.toml"
     if force or not watch_path.exists():
-        watch_path.write_text("repositories = []\n", encoding="utf-8", newline="\n")
+        watch_path.write_text("skills = []\nrepositories = []\n", encoding="utf-8", newline="\n")
 
     return root
 

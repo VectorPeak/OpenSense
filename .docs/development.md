@@ -15,10 +15,12 @@ OpenSense is currently in planning/prototype setup.
 
 ```bash
 opensense init
-opensense watch add <owner/repo>
+opensense watch repo add <owner/repo>
+opensense watch skill add <skill>
 opensense daily
-opensense inspect <owner/repo#issue>
-opensense plan <owner/repo#issue>
+opensense issue <owner/repo#issue>
+opensense issue <owner/repo#issue> --plan
+opensense repo <owner/repo>
 ```
 
 ## Runtime State
@@ -29,6 +31,15 @@ opensense plan <owner/repo#issue>
   watchlist.toml
   cache/
   reports/
+```
+
+Example `watchlist.toml`:
+
+```toml
+skills = ["python", "llm", "cli"]
+
+[[repositories]]
+name = "vllm-project/vllm"
 ```
 
 ## Implementation Notes

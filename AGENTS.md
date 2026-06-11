@@ -17,7 +17,7 @@ OpenSense is a daily PR opportunity finder for known open-source repositories.
 The MVP should optimize:
 
 ```text
-watchlist -> daily ranking -> inspect -> PR plan
+watched repos + skills -> daily ranking -> issue -> PR plan
 ```
 
 Avoid expanding the first version into a general open-source intelligence dashboard.

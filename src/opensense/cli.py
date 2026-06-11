@@ -19,12 +19,16 @@ from opensense.github.client import GitHubClient
 from opensense.github.issues import fetch_open_issues
 from opensense.github.radar import fetch_radar
 from opensense.llm.client import config_from_env
-from opensense.storage.watchlist import add_repository, load_watchlist, validate_repo_name
+from opensense.storage.watchlist import add_repository, add_skill, load_repositories, load_skills, validate_repo_name
 
 
 app = typer.Typer(help="Daily PR opportunity finder for known open-source repositories.")
-watch_app = typer.Typer(help="Manage watched repositories.")
+watch_app = typer.Typer(help="Manage watched repositories and skills.")
+watch_repo_app = typer.Typer(help="Manage watched repositories.")
+watch_skill_app = typer.Typer(help="Manage watched skills.")
 app.add_typer(watch_app, name="watch")
+watch_app.add_typer(watch_repo_app, name="repo")
+watch_app.add_typer(watch_skill_app, name="skill")
 console = Console()
 
 # Keep the product surface deliberately small. The CLI exposes five top-level
@@ -71,8 +75,8 @@ def init(
         emit_checks(workspace)
 
 
-@watch_app.command("add")
-def watch_add(repo: str, workspace: Optional[Path] = workspace_option()) -> None:
+@watch_repo_app.command("add")
+def watch_repo_add(repo: str, workspace: Optional[Path] = workspace_option()) -> None:
     """Add an owner/repo entry to the watchlist."""
 
     try:
@@ -89,12 +93,12 @@ def watch_add(repo: str, workspace: Optional[Path] = workspace_option()) -> None
         typer.echo(f"{repo} is already watched")
 
 
-@watch_app.command("list")
-def watch_list(workspace: Optional[Path] = workspace_option()) -> None:
+@watch_repo_app.command("list")
+def watch_repo_list(workspace: Optional[Path] = workspace_option()) -> None:
     """List watched repositories."""
 
     try:
-        repositories = load_watchlist(workspace)
+        repositories = load_repositories(workspace)
     except FileNotFoundError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
@@ -104,6 +108,42 @@ def watch_list(workspace: Optional[Path] = workspace_option()) -> None:
         return
     for repo in repositories:
         typer.echo(repo)
+
+
+@watch_skill_app.command("add")
+def watch_skill_add(skill: str, workspace: Optional[Path] = workspace_option()) -> None:
+    """Add a skill tag to the watchlist."""
+
+    try:
+        added = add_skill(skill, workspace)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    normalized = skill.strip().lower()
+    if added:
+        typer.echo(f"Added {normalized}")
+    else:
+        typer.echo(f"{normalized} is already watched")
+
+
+@watch_skill_app.command("list")
+def watch_skill_list(workspace: Optional[Path] = workspace_option()) -> None:
+    """List watched skill tags."""
+
+    try:
+        skills = load_skills(workspace)
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    if not skills:
+        typer.echo("No watched skills yet.")
+        return
+    for skill in skills:
+        typer.echo(skill)
 
 
 def emit_checks(workspace: Optional[Path]) -> None:
@@ -167,7 +207,8 @@ def daily(
     """Rank daily PR candidates from watched repositories."""
 
     try:
-        repositories = load_watchlist(workspace)
+        repositories = load_repositories(workspace)
+        skills = tuple(load_skills(workspace))
         client = github_client_for_workspace(workspace)
     except FileNotFoundError as exc:
         typer.echo(str(exc), err=True)
@@ -176,7 +217,14 @@ def daily(
     issues = []
     for repo in repositories:
         issues.extend(fetch_open_issues(client, repo, limit=limit * 3))
-    ranked = rank_issues(issues, limit=limit, min_stars=min_stars, updated_days=updated_days, max_comments=max_comments)
+    ranked = rank_issues(
+        issues,
+        limit=limit,
+        min_stars=min_stars,
+        updated_days=updated_days,
+        max_comments=max_comments,
+        skills=skills,
+    )
 
     table = Table(title="Daily PR candidates")
     table.add_column("#")

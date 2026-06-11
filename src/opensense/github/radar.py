@@ -9,6 +9,13 @@ from opensense.github.client import GitHubClient
 from opensense.models import RadarResult
 
 
+def count_open_issues(client: GitHubClient, repo: str) -> int:
+    """Count real open issues without counting pull requests."""
+
+    result = client.get_json("/search/issues", {"q": f"repo:{repo} is:issue is:open", "per_page": 1})
+    return int(result.get("total_count") or 0)
+
+
 def fetch_radar(client: GitHubClient, repo: str, *, skills: tuple[str, ...] = (), stale_days: int = 30) -> RadarResult:
     metadata = client.get_json(f"/repos/{repo}")
     languages = tuple((client.get_json(f"/repos/{repo}/languages") or {}).keys())
@@ -16,7 +23,7 @@ def fetch_radar(client: GitHubClient, repo: str, *, skills: tuple[str, ...] = ()
         f"/repos/{repo}/pulls",
         {"state": "all", "sort": "updated", "direction": "desc", "per_page": 100},
     )
-    issues = client.get_json(f"/repos/{repo}/issues", {"state": "open", "per_page": 1})
+    open_issues = count_open_issues(client, repo)
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
     merged = 0
@@ -42,7 +49,7 @@ def fetch_radar(client: GitHubClient, repo: str, *, skills: tuple[str, ...] = ()
     return score_radar(
         repo,
         stars=int(metadata.get("stargazers_count") or 0),
-        open_issues=len(issues),
+        open_issues=open_issues,
         open_prs=open_prs,
         merged_prs=merged,
         stale_prs=stale_prs,
