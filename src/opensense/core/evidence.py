@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from opensense.core.issue_ref import IssueRef
-from opensense.storage.packs import EVIDENCE_FILENAMES, pack_paths, require_existing_pack, write_markdown_files
+from opensense.storage.packs import EVIDENCE_FILENAMES, pack_paths, require_valid_pack, write_markdown_files
 
 
 @dataclass(frozen=True)
@@ -76,7 +76,7 @@ def evidence_files(issue_ref: IssueRef) -> dict[str, str]:
 
 def generate_evidence(issue_ref: IssueRef, workspace: Path | None = None, *, force: bool = False) -> EvidenceResult:
     paths = pack_paths(issue_ref, workspace)
-    require_existing_pack(paths)
+    require_valid_pack(paths, issue_ref.ref)
     bundle = build_evidence_bundle(issue_ref)
     written = write_markdown_files(paths, bundle.files, force=force)
     expected = {paths.root / name for name in EVIDENCE_FILENAMES}

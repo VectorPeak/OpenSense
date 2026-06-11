@@ -375,7 +375,8 @@ def evidence(
         issue_ref = parse_issue_reference(issue)
         result = generate_evidence(issue_ref, workspace, force=force)
     except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
     except (FileExistsError, FileNotFoundError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc

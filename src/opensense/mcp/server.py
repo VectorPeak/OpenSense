@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -11,7 +12,8 @@ from typing import Any
 from opensense.core.issue_ref import parse_issue_reference
 from opensense.core.patch import patch_dry_run
 from opensense.models import Issue
-from opensense.storage.packs import pack_paths
+from opensense.storage.packs import load_pack_payload as load_stored_pack_payload
+from opensense.storage.packs import pack_paths, validate_pack_payload
 from opensense.storage.watchlist import load_watchlist_data
 
 
@@ -58,7 +60,7 @@ def workspace_arg(arguments: dict[str, Any]) -> Path | None:
     value = arguments.get("workspace")
     if not value:
         return None
-    root = Path.cwd().resolve()
+    root = Path(os.environ.get("OPENSENSE_MCP_WORKSPACE_ROOT", Path.cwd())).resolve()
     requested = Path(str(value)).resolve()
     try:
         requested.relative_to(root)
@@ -76,28 +78,9 @@ def load_pack_payload(issue_ref_text: str, workspace: Path | None = None) -> dic
     paths = pack_paths(issue_ref, workspace)
     if not paths.pack_json.exists() or not paths.manifest_json.exists():
         raise FileNotFoundError("Context pack not found. Run `opensense pack <issue-url>` first.")
-    payload = {
-        "pack": json.loads(paths.pack_json.read_text(encoding="utf-8")),
-        "manifest": json.loads(paths.manifest_json.read_text(encoding="utf-8")),
-    }
+    payload = load_stored_pack_payload(paths)
     validate_pack_payload(payload, issue_ref.ref)
     return payload
-
-
-def validate_pack_payload(payload: dict[str, Any], requested_ref: str) -> None:
-    pack = payload.get("pack", {})
-    manifest = payload.get("manifest", {})
-    pack_ref = str(pack.get("issue", {}).get("ref") or "")
-    manifest_ref = str(manifest.get("issue_ref") or "")
-    if manifest.get("kind") != "opensense.pack_manifest":
-        raise ValueError("Pack manifest is missing the expected kind.")
-    if pack_ref != requested_ref or manifest_ref != requested_ref:
-        raise ValueError("Pack issue reference does not match the requested issue.")
-    if manifest.get("secret_scan", {}).get("status") != "passed":
-        raise ValueError("Pack secret scan has not passed.")
-    safety = manifest.get("safety", {})
-    if safety.get("source_modified") is not False or safety.get("github_write_performed") is not False:
-        raise ValueError("Pack safety metadata is not read-only.")
 
 
 def issue_from_pack(pack: dict[str, Any]) -> Issue:

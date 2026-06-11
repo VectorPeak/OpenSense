@@ -132,6 +132,21 @@ def test_pack_does_not_overwrite_without_force(monkeypatch, tmp_path: Path) -> N
     assert "--force" in second.output
 
 
+def test_pack_preflight_prevents_partial_writes_when_json_exists(monkeypatch, tmp_path: Path) -> None:
+    issue = sample_issue()
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    root.mkdir(parents=True)
+    (root / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
+
+    result = runner.invoke(app, ["pack", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "pack.json" in result.output
+    assert not (root / "issue.md").exists()
+
+
 def test_pack_refuses_secret_like_issue_body(monkeypatch, tmp_path: Path) -> None:
     issue = Issue(
         owner="owner",
@@ -158,6 +173,23 @@ def test_evidence_requires_existing_pack(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Run `opensense pack <issue-url>` first" in result.output
+
+
+def test_evidence_rejects_pack_without_valid_manifest(monkeypatch, tmp_path: Path) -> None:
+    issue = sample_issue()
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
+    assert runner.invoke(app, ["pack", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    manifest["secret_scan"]["status"] = "blocked"
+    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = runner.invoke(app, ["evidence", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "secret scan has not passed" in result.output
+    assert not (root / "pr-summary.md").exists()
 
 
 def test_evidence_writes_drafts_from_existing_pack(monkeypatch, tmp_path: Path) -> None:
@@ -220,3 +252,24 @@ def test_patch_dry_run_blocks_closed_issues(monkeypatch, tmp_path: Path) -> None
     assert result.exit_code == 0, result.output
     assert "Feasible for agent-assisted patch: no" in result.output
     assert "issue state is closed" in result.output
+
+
+def test_patch_dry_run_blocks_sensitive_issue_body(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=12,
+        title="Fix small bug",
+        body="This touches authentication and token handling.",
+        labels=("bug",),
+        comments=1,
+        repository_stars=1200,
+    )
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
+
+    result = runner.invoke(app, ["patch", "owner/repo#12", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Feasible for agent-assisted patch: no" in result.output
+    assert "sensitive topic should stay human-only" in result.output

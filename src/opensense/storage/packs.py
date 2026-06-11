@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import Any
 
 from opensense.config import state_dir
 from opensense.core.issue_ref import IssueRef
@@ -36,6 +37,13 @@ PACK_FILENAMES = (
     "risks.md",
     "agent.md",
 )
+
+STRUCTURED_PACK_FILENAMES = (
+    "pack.json",
+    "manifest.json",
+)
+
+PACK_ARTIFACT_FILENAMES = (*PACK_FILENAMES, *STRUCTURED_PACK_FILENAMES)
 
 EVIDENCE_FILENAMES = (
     "pr-summary.md",
@@ -72,8 +80,9 @@ def ensure_pack_can_write(paths: PackPaths, filenames: tuple[str, ...], *, force
         raise FileExistsError(f"Pack files already exist: {joined}. Re-run with --force to overwrite.")
 
 
-def write_markdown_files(paths: PackPaths, files: dict[str, str], *, force: bool = False) -> tuple[Path, ...]:
-    ensure_pack_can_write(paths, tuple(files), force=force)
+def write_markdown_files(paths: PackPaths, files: dict[str, str], *, force: bool = False, prechecked: bool = False) -> tuple[Path, ...]:
+    if not prechecked:
+        ensure_pack_can_write(paths, tuple(files), force=force)
     paths.root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name, content in files.items():
@@ -83,8 +92,9 @@ def write_markdown_files(paths: PackPaths, files: dict[str, str], *, force: bool
     return tuple(written)
 
 
-def write_json_files(paths: PackPaths, files: dict[str, dict[str, object]], *, force: bool = False) -> tuple[Path, ...]:
-    ensure_pack_can_write(paths, tuple(files), force=force)
+def write_json_files(paths: PackPaths, files: dict[str, dict[str, object]], *, force: bool = False, prechecked: bool = False) -> tuple[Path, ...]:
+    if not prechecked:
+        ensure_pack_can_write(paths, tuple(files), force=force)
     paths.root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name, content in files.items():
@@ -94,7 +104,53 @@ def write_json_files(paths: PackPaths, files: dict[str, dict[str, object]], *, f
     return tuple(written)
 
 
+def write_pack_artifacts(
+    paths: PackPaths,
+    markdown_files: dict[str, str],
+    json_files: dict[str, dict[str, object]],
+    *,
+    force: bool = False,
+) -> tuple[Path, ...]:
+    ensure_pack_can_write(paths, (*tuple(markdown_files), *tuple(json_files)), force=force)
+    return (
+        *write_markdown_files(paths, markdown_files, force=force, prechecked=True),
+        *write_json_files(paths, json_files, force=force, prechecked=True),
+    )
+
+
 def require_existing_pack(paths: PackPaths) -> None:
     missing = [name for name in PACK_FILENAMES if not (paths.root / name).exists()]
     if missing:
         raise FileNotFoundError("Context pack not found. Run `opensense pack <issue-url>` first.")
+
+
+def load_pack_payload(paths: PackPaths) -> dict[str, Any]:
+    if not paths.pack_json.exists() or not paths.manifest_json.exists():
+        raise FileNotFoundError("Structured context pack not found. Run `opensense pack <issue-url>` first.")
+    return {
+        "pack": json.loads(paths.pack_json.read_text(encoding="utf-8")),
+        "manifest": json.loads(paths.manifest_json.read_text(encoding="utf-8")),
+    }
+
+
+def validate_pack_payload(payload: dict[str, Any], requested_ref: str) -> None:
+    pack = payload.get("pack", {})
+    manifest = payload.get("manifest", {})
+    pack_ref = str(pack.get("issue", {}).get("ref") or "")
+    manifest_ref = str(manifest.get("issue_ref") or "")
+    if manifest.get("kind") != "opensense.pack_manifest":
+        raise ValueError("Pack manifest is missing the expected kind.")
+    if pack_ref != requested_ref or manifest_ref != requested_ref:
+        raise ValueError("Pack issue reference does not match the requested issue.")
+    if manifest.get("secret_scan", {}).get("status") != "passed":
+        raise ValueError("Pack secret scan has not passed.")
+    safety = manifest.get("safety", {})
+    if safety.get("source_modified") is not False or safety.get("github_write_performed") is not False:
+        raise ValueError("Pack safety metadata is not read-only.")
+
+
+def require_valid_pack(paths: PackPaths, requested_ref: str) -> dict[str, Any]:
+    require_existing_pack(paths)
+    payload = load_pack_payload(paths)
+    validate_pack_payload(payload, requested_ref)
+    return payload

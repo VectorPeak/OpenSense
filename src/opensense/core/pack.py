@@ -12,7 +12,7 @@ from opensense.core.repo_context import RepoContext, scan_repo_context
 from opensense.core.scoring import score_issue
 from opensense.core.secrets import assert_no_secret_like_text
 from opensense.models import Issue
-from opensense.storage.packs import PACK_FILENAMES, PackPaths, pack_paths, write_json_files, write_markdown_files
+from opensense.storage.packs import PACK_FILENAMES, PackPaths, pack_paths, write_pack_artifacts
 
 
 @dataclass(frozen=True)
@@ -210,11 +210,11 @@ def pack_json(issue: Issue, issue_ref: IssueRef, repo_context: RepoContext, file
         },
         "facts": {
             "repository": issue_ref.repository,
-            "score": score.total,
-            "contribution_type": score.contribution_type,
             "repo_context": repo_context.to_dict(),
         },
         "inferences": {
+            "score": score.total,
+            "contribution_type": score.contribution_type,
             "reasons": list(score.reasons),
             "candidate_file_searches": [line.strip("- `") for line in files["files.md"].splitlines() if line.startswith("- `rg ")],
         },
@@ -296,8 +296,7 @@ def generate_pack(issue: Issue, issue_ref: IssueRef, workspace: Path | None = No
     paths = pack_paths(issue_ref, workspace)
     pack = build_context_pack(issue, issue_ref, scan_repo_context(workspace))
     files = pack.files
-    written = write_markdown_files(paths, files, force=force)
-    written += write_json_files(paths, {"pack.json": pack.structured, "manifest.json": pack.manifest}, force=force)
+    written = write_pack_artifacts(paths, files, {"pack.json": pack.structured, "manifest.json": pack.manifest}, force=force)
     expected = {paths.root / name for name in PACK_FILENAMES}
     expected.update({paths.pack_json, paths.manifest_json})
     return PackResult(issue_ref=issue_ref, root=paths.root, written_files=tuple(path for path in written if path in expected))

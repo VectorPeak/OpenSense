@@ -23,7 +23,7 @@ class PatchDryRunResult:
 
 def patch_dry_run(issue: Issue) -> PatchDryRunResult:
     score = score_issue(issue)
-    text = " ".join((issue.title, " ".join(issue.labels))).lower()
+    text = " ".join((issue.title, issue.body, " ".join(issue.labels))).lower()
     risks = list(score.risks)
     required_context = [
         "Read the full issue thread and linked discussions.",

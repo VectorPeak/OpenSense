@@ -63,7 +63,8 @@ def test_mcp_initialize_and_tools_list() -> None:
     assert tool_names == {"get_watchlist", "read_pack", "patch_dry_run"}
 
 
-def test_mcp_get_watchlist_reads_local_state(tmp_path: Path) -> None:
+def test_mcp_get_watchlist_reads_local_state(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
     initialize_state(tmp_path, OpenSenseConfig())
 
     response = tool_call("get_watchlist", {"workspace": str(tmp_path)})
@@ -73,7 +74,8 @@ def test_mcp_get_watchlist_reads_local_state(tmp_path: Path) -> None:
     assert payload["skills"] == ["agent", "rag"]
 
 
-def test_mcp_read_pack_returns_pack_and_manifest(tmp_path: Path) -> None:
+def test_mcp_read_pack_returns_pack_and_manifest(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
     write_sample_pack(tmp_path)
 
     response = tool_call("read_pack", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"})
@@ -83,7 +85,8 @@ def test_mcp_read_pack_returns_pack_and_manifest(tmp_path: Path) -> None:
     assert payload["manifest"]["kind"] == "opensense.pack_manifest"
 
 
-def test_mcp_patch_dry_run_uses_existing_pack(tmp_path: Path) -> None:
+def test_mcp_patch_dry_run_uses_existing_pack(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
     write_sample_pack(tmp_path)
 
     response = tool_call("patch_dry_run", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"})
@@ -94,7 +97,8 @@ def test_mcp_patch_dry_run_uses_existing_pack(tmp_path: Path) -> None:
     assert "Generate or refresh the context pack." in payload["suggested_steps"]
 
 
-def test_mcp_missing_pack_returns_json_rpc_error(tmp_path: Path) -> None:
+def test_mcp_missing_pack_returns_json_rpc_error(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
     response = tool_call("read_pack", {"workspace": str(tmp_path), "issue_ref": "owner/repo#404"})
 
     assert response["error"]["code"] == -32000
@@ -102,6 +106,7 @@ def test_mcp_missing_pack_returns_json_rpc_error(tmp_path: Path) -> None:
 
 
 def test_mcp_rejects_workspace_outside_launch_directory(tmp_path: Path) -> None:
+    # OPENSENSE_MCP_WORKSPACE_ROOT is intentionally unset here, so cwd is the allowed root.
     outside = Path.cwd().resolve().parent
 
     response = tool_call("get_watchlist", {"workspace": str(outside)})
@@ -110,7 +115,8 @@ def test_mcp_rejects_workspace_outside_launch_directory(tmp_path: Path) -> None:
     assert "Workspace must be inside" in response["error"]["message"]
 
 
-def test_mcp_rejects_pack_with_failed_secret_scan(tmp_path: Path) -> None:
+def test_mcp_rejects_pack_with_failed_secret_scan(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
     write_sample_pack(tmp_path)
     paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
     manifest = json.loads(paths.manifest_json.read_text(encoding="utf-8"))
@@ -123,7 +129,8 @@ def test_mcp_rejects_pack_with_failed_secret_scan(tmp_path: Path) -> None:
     assert "secret scan has not passed" in response["error"]["message"]
 
 
-def test_mcp_rejects_pack_issue_mismatch(tmp_path: Path) -> None:
+def test_mcp_rejects_pack_issue_mismatch(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
     write_sample_pack(tmp_path)
     paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
     manifest = json.loads(paths.manifest_json.read_text(encoding="utf-8"))
