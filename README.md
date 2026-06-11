@@ -85,16 +85,78 @@ opensense repo vllm-project/vllm --skills python,llm
 opensense repo vllm-project/vllm pallets/flask --skills python
 ```
 
-LLM 是可选能力。配置后，它可以增强 issue 总结、风险判断和 PR 前计划：
+## 效果演示
 
-```bash
-export OPENSENSE_LLM_API_KEY=...
-export OPENSENSE_LLM_BASE_URL=https://api.openai.com/v1
-export OPENSENSE_LLM_MODEL=gpt-5.5
-opensense init --llm-api-key-env OPENSENSE_LLM_API_KEY
+先把你关注的仓库和技术栈加入 watchlist：
+
+```text
+$ opensense watch repo add vllm-project/vllm
+$ opensense watch repo add triton-lang/triton
+$ opensense watch repo add huggingface/transformers
+$ opensense watch skill add python
+$ opensense watch skill add llm
+$ opensense watch skill add cuda
 ```
 
-OpenSense 默认读取 `GITHUB_TOKEN` 来提高 GitHub API 访问额度。它不应该把原始 API key 写进已提交文件，配置里只应该引用环境变量名。
+然后运行 `opensense daily`，你会先得到一份短候选列表，而不是继续在 GitHub 页面里反复翻 issue：
+
+```text
+$ opensense daily --min-stars 1000 --limit 8
+
+找到 24 个候选 issue。
+正在按仓库信号、issue 小型程度和技能匹配度排序...
+
+OpenSense 结果
+技术栈：python, llm, cuda
+结果：8 个 issue，按适合今天动手的程度排序
+
+1. [9/10] vllm-project/vllm
+   Fix CUDA graph memory leak in speculative decoding
+   Labels: bug, good first issue
+   为什么匹配：需要 CUDA + Python + LLM 推理知识。
+   怎么上手：先看 vllm/spec_decode/worker.py 和相关 graph capture 测试。
+   下一步：opensense issue vllm-project/vllm#12345 --plan
+
+2. [8/10] triton-lang/triton
+   Type inference fails for constexpr in nested loops
+   Labels: bug
+   为什么匹配：Python 编译器内部逻辑，和 GPU kernel 相关。
+   怎么上手：查 code_generator.py visit_For，并对照相似 issue。
+   下一步：opensense issue triton-lang/triton#9547 --plan
+
+3. [7/10] huggingface/transformers
+   ...
+```
+
+选中一个 issue 后，再用 `issue --plan` 生成 PR 前计划：
+
+```text
+$ opensense issue vllm-project/vllm#12345 --plan
+
+Score: 86
+Type: test
+Why:
++ matches watched skill: python
++ unassigned
++ recent activity
+
+# PR Plan for vllm-project/vllm#12345
+
+- 先阅读 issue 描述、最近评论和相关测试失败信息。
+- 优先定位 scheduler / tests 相关模块，确认是否能复现。
+- 先补一个最小失败测试，再做窄范围修复。
+- 提交 PR 前运行相关单测，并在 PR 描述里写清楚复现方式和验证命令。
+- 如果 issue 里没有维护者确认，可以先留言说明计划，避免做偏方向。
+```
+
+如果你还不确定某个仓库是否值得投入时间，可以先看仓库级信号：
+
+```text
+$ opensense repo vllm-project/vllm --skills python,llm
+
+Repository        Score  Verdict  Signals
+vllm-project/vllm 82     Go       external contributors are getting merged; language matches your skills
+```
 
 ## 核心流程
 
@@ -123,6 +185,34 @@ opensense init
 - LLM API key 环境变量名
 - 每日排序偏好
 - 本地缓存和报告路径
+
+推荐优先配置两个东西：GitHub Token 和 LLM 服务。
+
+#### GitHub Token（推荐）
+
+没有 token 时，GitHub API 访问额度很低；配置 token 后，更适合每天扫描多个仓库：
+
+```bash
+export GITHUB_TOKEN=your-github-token
+opensense init --github-token-env GITHUB_TOKEN
+```
+
+#### LLM 服务（可选但推荐）
+
+没有 LLM key 也能用，OpenSense 会退回确定性规则评分。配置 LLM 后，`issue --plan` 可以生成更好的摘要、风险判断和 PR 前计划。
+
+```bash
+export OPENSENSE_LLM_API_KEY=your-api-key
+export OPENSENSE_LLM_BASE_URL=https://api.openai.com/v1
+export OPENSENSE_LLM_MODEL=gpt-5.5
+
+opensense init \
+  --llm-api-key-env OPENSENSE_LLM_API_KEY \
+  --llm-base-url-env OPENSENSE_LLM_BASE_URL \
+  --llm-model-env OPENSENSE_LLM_MODEL
+```
+
+配置文件只保存环境变量名，不保存原始 API key。
 
 ### 2. 关注仓库和技术栈
 
@@ -248,31 +338,6 @@ OpenSense v1 聚焦开源贡献的筛选和规划。
 - 默认搜索整个 GitHub
 - 作为项目管理或通知平台
 
-## LLM 设计原则
-
-LLM 很有用，但 OpenSense 的基础功能不应该依赖 LLM。
-
-推荐职责划分：
-
-```text
-GitHub API + 确定性评分  ->  候选 issue 排序
-LLM 辅助推理             ->  摘要、风险、PR 前计划
-```
-
-LLM 应该负责解释和规划，但不应该成为唯一事实来源。
-
-## OpenSense 有什么不同
-
-| 工具 | 最适合 | 搜索范围 | 主要输出 |
-| --- | --- | --- | --- |
-| GitSense | 在 GitHub 全站寻找匹配技能的 issue | 广范围 GitHub 搜索 | issue 匹配排序和 repo radar |
-| good-first-issue / up-for-grabs | 浏览新手友好的 issue 目录 | 公开 curated list | 带标签 issue 链接 |
-| OpenSense | 围绕你关注的仓库建立每日贡献流程 | 你的 watchlist | 每日候选 issue 和 PR 前计划 |
-
-OpenSense 不试图了解整个开源世界。它只优化一个动作：
-
-> 今天找到一个值得认真尝试的小 issue，并把它推进成一次 PR 尝试。
-
 ## 计划架构
 
 当前 MVP 暂时把命令接线放在单个 `cli.py` 中，并按职责拆分领域逻辑：
@@ -303,19 +368,6 @@ src/opensense/
 ```
 
 第一版实现应该保持轻量：Typer/Rich CLI、GitHub API client、TOML/JSON 本地状态、确定性评分，以及可选的 LLM 辅助规划。
-
-## 当前状态
-
-OpenSense 当前已经具备第一版可运行 MVP CLI：
-
-- `opensense init`
-- `opensense watch repo add`
-- `opensense watch repo list`
-- `opensense watch skill add`
-- `opensense watch skill list`
-- `opensense daily`
-- `opensense issue`
-- `opensense repo`
 
 ## 许可证
 
