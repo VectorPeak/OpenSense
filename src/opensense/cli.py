@@ -214,12 +214,12 @@ def find_open_issue(workspace: Optional[Path], issue_ref: str):
 def daily(
     workspace: Optional[Path] = workspace_option(),
     limit: int = typer.Option(10, "--limit", min=1, max=50, help="Maximum issues to show."),
-    candidate_pool: int = typer.Option(30, "--candidate-pool", min=5, max=200, help="Maximum issues per repository to collect when --llm is enabled."),
+    candidate_pool: int = typer.Option(30, "--candidate-pool", min=5, max=200, help="Maximum issues per repository to collect for LLM-assisted finding."),
     min_stars: int = typer.Option(0, "--min-stars", help="Minimum repository stars."),
     updated_days: int = typer.Option(30, "--updated-days", help="Prefer issues updated within this many days."),
     max_comments: int = typer.Option(20, "--max-comments", help="Maximum comments allowed for candidates."),
-    llm: bool = typer.Option(False, "--llm", help="Use the configured LLM to find the best issues from a larger candidate pool."),
-    model: Optional[str] = typer.Option(None, "--model", help="Override LLM model name for --llm."),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Disable LLM-assisted finding and only use rule-based ranking."),
+    model: Optional[str] = typer.Option(None, "--model", help="Override LLM model name for daily LLM analysis."),
 ) -> None:
     """Rank daily PR candidates from watched repositories."""
 
@@ -232,7 +232,8 @@ def daily(
         raise typer.Exit(1) from exc
 
     issues = []
-    fetch_limit = candidate_pool if llm else limit * 3
+    use_llm = not no_llm
+    fetch_limit = candidate_pool if use_llm else limit * 3
     for repo in repositories:
         issues.extend(fetch_open_issues(client, repo, limit=fetch_limit))
     llm_candidates = rank_issues(
@@ -269,7 +270,7 @@ def daily(
             f"opensense issue {item.issue.ref}",
         )
     console.print(table)
-    if llm:
+    if use_llm:
         try:
             console.print(
                 Panel(
