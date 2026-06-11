@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from opensense.config import OpenSenseConfig, initialize_state, load_config, validate_env_var_name
+from opensense.core.daily import generate_daily_analysis
 from opensense.core.planner import generate_plan
 from opensense.core.ranking import rank_issues
 from opensense.core.scoring import score_issue
@@ -178,6 +179,19 @@ def github_client_for_workspace(workspace: Optional[Path]) -> GitHubClient:
     return GitHubClient(token_env=token_env)
 
 
+def llm_config_for_workspace(workspace: Optional[Path], model: Optional[str] = None):
+    config_data = load_config(workspace)
+    llm = config_data.get("llm", {})
+    llm_config = config_from_env(
+        api_key_env=str(llm.get("api_key_env", "OPENSENSE_LLM_API_KEY")),
+        base_url_env=str(llm.get("base_url_env", "OPENSENSE_LLM_BASE_URL")),
+        model_env=str(llm.get("model_env", "OPENSENSE_LLM_MODEL")),
+    )
+    if model:
+        llm_config = type(llm_config)(api_key_env=llm_config.api_key_env, base_url=llm_config.base_url, model=model)
+    return llm_config
+
+
 def find_open_issue(workspace: Optional[Path], issue_ref: str):
     """Fetch one issue by scanning recent open issues from its repository.
 
@@ -203,6 +217,8 @@ def daily(
     min_stars: int = typer.Option(0, "--min-stars", help="Minimum repository stars."),
     updated_days: int = typer.Option(30, "--updated-days", help="Prefer issues updated within this many days."),
     max_comments: int = typer.Option(20, "--max-comments", help="Maximum comments allowed for candidates."),
+    llm: bool = typer.Option(False, "--llm", help="Ask the configured LLM to analyze the ranked candidates."),
+    model: Optional[str] = typer.Option(None, "--model", help="Override LLM model name for --llm."),
 ) -> None:
     """Rank daily PR candidates from watched repositories."""
 
@@ -243,6 +259,12 @@ def daily(
             f"opensense issue {item.issue.ref}",
         )
     console.print(table)
+    if llm:
+        try:
+            console.print(Panel(generate_daily_analysis(ranked, skills, llm_config_for_workspace(workspace, model)), title="LLM Daily Analysis"))
+        except Exception as exc:
+            typer.echo(f"LLM analysis failed: {exc}", err=True)
+            raise typer.Exit(1) from exc
 
 
 @app.command()
@@ -288,15 +310,7 @@ def issue(
     if plan:
         llm_config = None
         if not no_llm:
-            config_data = load_config(workspace)
-            llm = config_data.get("llm", {})
-            llm_config = config_from_env(
-                api_key_env=str(llm.get("api_key_env", "OPENSENSE_LLM_API_KEY")),
-                base_url_env=str(llm.get("base_url_env", "OPENSENSE_LLM_BASE_URL")),
-                model_env=str(llm.get("model_env", "OPENSENSE_LLM_MODEL")),
-            )
-            if model:
-                llm_config = type(llm_config)(api_key_env=llm_config.api_key_env, base_url=llm_config.base_url, model=model)
+            llm_config = llm_config_for_workspace(workspace, model)
         console.print(generate_plan(scored, llm_config))
 
 
