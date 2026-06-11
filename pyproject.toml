@@ -3,16 +3,35 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "opensense"
+name = "opensense-vp"
 version = "0.1.0"
 description = "Daily PR opportunity finder for known open-source repositories"
 readme = "README.md"
 license = "MIT"
+authors = [
+  { name = "VectorPeak" },
+]
 requires-python = ">=3.10"
+keywords = ["agent", "github", "open-source", "rag", "issue-triage"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development",
+]
 dependencies = [
   "typer>=0.12.0",
   "rich>=13.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/VectorPeak/OpenSense"
+Repository = "https://github.com/VectorPeak/OpenSense"
+Issues = "https://github.com/VectorPeak/OpenSense/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -21,6 +40,9 @@ dev = [
 
 [project.scripts]
 opensense = "opensense.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/opensense"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

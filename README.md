@@ -402,22 +402,17 @@ src/opensense/
 
 可以。OpenSense 已经使用标准 `pyproject.toml` 和 `src/` 包结构，并配置了 `opensense` 命令行入口。
 
-不过 PyPI 上的 `opensense` 名称已经被其他项目占用，因此推荐使用 `opensense-radar` 作为发布包名，同时保持安装后的命令名称不变：
+不过 PyPI 上的 `opensense` 名称已经被其他项目占用，因此本项目使用 `opensense-vp` 作为发布包名，同时保持安装后的命令名称不变：
 
 ```bash
-pip install opensense-radar
+pip install opensense-vp
 opensense init
 opensense daily
 ```
 
-正式发布到 PyPI 前还需要完成：
+当前已经完成发布包元数据、wheel / 源码包构建、`twine check`、隔离环境安装验证和 GitHub Actions 发布工作流。
 
-- 确定发布包名，例如 `opensense-radar`
-- 在 `pyproject.toml` 中补充作者、项目主页、仓库地址和分类信息
-- 构建并检查 wheel 与源码包
-- 配置 PyPI Trusted Publishing 或发布 token
-- 添加发布工作流，并在干净环境中验证安装后的 `opensense` 命令
-- 使用版本号和 Git tag 管理每次发布
+首次发布前还需要在 PyPI 为 `opensense-vp` 配置 Trusted Publisher，然后在 GitHub 发布 `v0.1.0` Release。后续每次发布都需要先提升版本号，再创建对应 Git tag 和 Release。
 
 ### 必须配置 GitHub Token 吗？
 
