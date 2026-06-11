@@ -329,6 +329,14 @@ opensense evidence https://github.com/vllm-project/vllm/issues/12345
 
 `pack` writes Markdown files plus `pack.json` and `manifest.json` under `.opensense/packs/<owner>__<repo>/<issue-number>/`. `patch --dry-run` only reports suitability and does not modify source files. `evidence` creates PR summary, test evidence, and maintainer note drafts from an existing pack. If tests were not actually run, the evidence says `Not run.`
 
+For agent clients, OpenSense also provides a read-only MCP entrypoint:
+
+```bash
+opensense-mcp
+```
+
+The first MCP surface exposes `get_watchlist`, `read_pack`, and `patch_dry_run`. It reads existing local state and pack artifacts only; it does not create PRs, comments, commits, branches, or source-code changes.
+
 `issue` 会回答：
 
 - 这个 issue 在说什么？

@@ -109,9 +109,8 @@ Add an `opensense-mcp` package only after the core pack and evidence logic is st
 Initial MCP tools should be read-only:
 
 - `get_watchlist`
-- `list_daily_candidates`
-- `inspect_issue`
-- `generate_pr_plan`
+- `read_pack`
+- `patch_dry_run`
 
 Do not expose `apply_patch`, `commit`, `push`, `comment`, or `create_pr` in the first MCP version.
 
