@@ -330,6 +330,63 @@ def test_daily_uses_watched_skills_to_boost_matching_issues(monkeypatch, tmp_pat
     assert "matches watched skill: python" in text
 
 
+def test_daily_llm_prints_candidate_analysis(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=3,
+        title="Fix agent retrieval bug",
+        labels=("bug", "agent"),
+        comments=1,
+        repository_stars=900,
+    )
+
+    monkeypatch.setattr("opensense.cli.load_repositories", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: ["agent"])
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+    monkeypatch.setattr("opensense.cli.llm_config_for_workspace", lambda workspace, model=None: object())
+    monkeypatch.setattr("opensense.cli.generate_daily_analysis", lambda ranked, skills, config: "Pick owner/repo#3 first.")
+    output = StringIO()
+    monkeypatch.setattr("opensense.cli.console", Console(file=output, width=180, color_system=None))
+
+    result = runner.invoke(app, ["daily", "--llm", "--workspace", str(tmp_path)])
+
+    text = output.getvalue()
+    assert result.exit_code == 0, result.output
+    assert "LLM Daily Analysis" in text
+    assert "Pick owner/repo#3 first." in text
+
+
+def test_daily_llm_reports_failure_without_traceback(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=4,
+        title="Fix RAG indexing bug",
+        labels=("bug", "rag"),
+        comments=1,
+        repository_stars=900,
+    )
+
+    monkeypatch.setattr("opensense.cli.load_repositories", lambda workspace: ["owner/repo"])
+    monkeypatch.setattr("opensense.cli.load_skills", lambda workspace: ["rag"])
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+    monkeypatch.setattr("opensense.cli.llm_config_for_workspace", lambda workspace, model=None: object())
+
+    def fail_analysis(ranked, skills, config):
+        raise RuntimeError("provider rejected request")
+
+    monkeypatch.setattr("opensense.cli.generate_daily_analysis", fail_analysis)
+
+    result = runner.invoke(app, ["daily", "--llm", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "LLM analysis failed: provider rejected request" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_issue_inspects_one_candidate(monkeypatch, tmp_path: Path) -> None:
     issue = Issue(
         owner="owner",
