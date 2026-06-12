@@ -8,6 +8,7 @@ import json
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 from opensense.config import workspace_path
 from opensense.core.command_safety import validate_no_obvious_remote_write
@@ -26,6 +27,14 @@ class AgentArtifactResult:
     written_files: tuple[Path, ...]
 
 
+@dataclass(frozen=True)
+class AgentStatusResult:
+    issue_ref: str
+    root: Path
+    rows: tuple[tuple[str, str, str], ...]
+    next_step: str
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -35,6 +44,12 @@ def git_output(cwd: Path, args: list[str]) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
+
+
+def read_json_if_exists(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def validate_agent_command(command: tuple[str, ...]) -> None:
@@ -156,6 +171,88 @@ def generate_agent_handoff(issue_ref: IssueRef, workspace: Path | None = None, *
     paths.agent_handoff_json.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     paths.agent_handoff_md.write_text(handoff_markdown(payload["pack"], issue_ref, sandbox, paths).rstrip() + "\n", encoding="utf-8", newline="\n")
     return AgentArtifactResult(issue_ref=issue_ref.ref, root=paths.root, status="written", exit_code=0, written_files=(paths.agent_handoff_json, paths.agent_handoff_md))
+
+
+def summarize_agent_status(issue_ref: IssueRef, workspace: Path | None = None) -> AgentStatusResult:
+    root = workspace_path(workspace)
+    paths = pack_paths(issue_ref, root)
+    require_valid_pack(paths, issue_ref.ref)
+
+    rows: list[tuple[str, str, str]] = [("Pack", "ready", "validated pack and manifest")]
+    proposal_status = "ready" if paths.patch_proposal_md.exists() else "missing"
+    rows.append(("Proposal", proposal_status, "patch-proposal.md" if proposal_status == "ready" else "run opensense propose"))
+
+    sandbox_status = "missing"
+    sandbox_detail = "run opensense sandbox create"
+    if paths.sandbox_json.exists():
+        try:
+            sandbox = load_sandbox(issue_ref, root)
+            worktree = Path(sandbox.real_worktree_path)
+            if worktree.exists():
+                sandbox_status = "ready"
+                sandbox_detail = str(worktree)
+            else:
+                sandbox_status = "missing_worktree"
+                sandbox_detail = "recreate sandbox or remove sandbox.json"
+        except (FileNotFoundError, TypeError, ValueError, json.JSONDecodeError):
+            sandbox_status = "invalid"
+            sandbox_detail = "sandbox.json could not be read"
+    rows.append(("Sandbox", sandbox_status, sandbox_detail))
+
+    handoff = read_json_if_exists(paths.agent_handoff_json)
+    handoff_status = "ready" if handoff and handoff.get("kind") == "opensense.agent_handoff" else "missing"
+    rows.append(("Agent handoff", handoff_status, "agent-handoff.md" if handoff_status == "ready" else "run opensense agent handoff"))
+
+    apply_state = read_json_if_exists(paths.agent_apply_json)
+    apply_status = "not_run"
+    apply_detail = "run opensense agent apply"
+    if apply_state:
+        apply_status = str(apply_state.get("status") or "unknown")
+        if apply_state.get("kind") != "opensense.agent_apply" or apply_state.get("issue_ref") != issue_ref.ref:
+            apply_status = "not_verified"
+        elif apply_state.get("git_commit_performed") is True:
+            apply_status = "not_verified"
+            apply_detail = "agent command committed; inspect before drafting PR"
+        else:
+            apply_detail = ", ".join(str(item) for item in apply_state.get("modified_files", [])[:3]) or "no modified files"
+    rows.append(("Agent apply", apply_status, apply_detail))
+
+    test_state = read_json_if_exists(paths.test_run_json)
+    test_status = "not_run"
+    test_detail = "run opensense test run"
+    if test_state:
+        test_status = str(test_state.get("status") or "unknown")
+        if test_state.get("kind") != "opensense.test_run" or test_state.get("issue_ref") != issue_ref.ref:
+            test_status = "not_verified"
+        elif test_state.get("git_commit_performed") is True:
+            test_status = "not_verified"
+            test_detail = "test command committed; inspect before using evidence"
+        else:
+            test_detail = f"exit_code={test_state.get('exit_code')}"
+    rows.append(("Tests", test_status, test_detail))
+
+    draft = read_json_if_exists(paths.pr_draft_json)
+    draft_status = "ready" if draft and draft.get("kind") == "opensense.pr_draft" else "missing"
+    draft_detail = "pr-draft.md" if draft_status == "ready" else "run opensense pr draft"
+    if draft:
+        draft_detail = f"agent={draft.get('agent_apply_status')}, tests={draft.get('test_status')}"
+    rows.append(("PR draft", draft_status, draft_detail))
+
+    if proposal_status != "ready":
+        next_step = f"opensense propose {issue_ref.ref}"
+    elif sandbox_status != "ready":
+        next_step = f"opensense sandbox create {issue_ref.ref}"
+    elif handoff_status != "ready":
+        next_step = f"opensense agent handoff {issue_ref.ref}"
+    elif apply_status in {"not_run", "failed", "timeout", "not_verified", "unknown"}:
+        next_step = f"opensense agent apply {issue_ref.ref} -- <agent command>"
+    elif test_status in {"not_run", "failed", "timeout", "not_verified", "unknown"}:
+        next_step = f"opensense test run {issue_ref.ref} -- <test command>"
+    elif draft_status != "ready":
+        next_step = f"opensense pr draft {issue_ref.ref}"
+    else:
+        next_step = "Review pr-draft.md and decide whether to open a PR manually."
+    return AgentStatusResult(issue_ref=issue_ref.ref, root=paths.root, rows=tuple(rows), next_step=next_step)
 
 
 def generate_agent_apply(

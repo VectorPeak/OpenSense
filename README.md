@@ -14,7 +14,8 @@
 </div>
 
 ```text
-关注仓库  ->  每日 issue 排序  ->  issue --plan  ->  PR 尝试
+watchlist -> daily -> issue --plan -> pack -> propose -> sandbox
+          -> agent apply -> test run -> pr draft -> agent status
 ```
 
 ## 解决痛点
@@ -58,10 +59,11 @@ OpenSense 已发布到 PyPI。安装包名是 `opensense-vp`，安装后的命�
 pip install opensense-vp
 ```
 
-当前 CLI 包含五个顶层命令：
+当前 CLI 围绕一条本地 PR 尝试流程组织命令：
 
 ```text
-init -> watch -> daily -> issue -> pack -> patch -> evidence -> repo
+init -> watch -> daily -> issue -> pack -> patch -> propose
+     -> sandbox -> agent -> test -> pr -> repo
 ```
 
 ```bash
@@ -88,10 +90,16 @@ opensense daily --no-llm
 opensense issue vllm-project/vllm#12345
 opensense issue vllm-project/vllm#12345 --plan --no-llm
 
-# 6. Generate an Agent context pack and PR evidence draft
+# 6. 把单个 issue 变成本地 PR 尝试
 opensense pack https://github.com/vllm-project/vllm/issues/12345
 opensense patch https://github.com/vllm-project/vllm/issues/12345 --dry-run
-opensense evidence https://github.com/vllm-project/vllm/issues/12345
+opensense propose https://github.com/vllm-project/vllm/issues/12345
+opensense sandbox create https://github.com/vllm-project/vllm/issues/12345
+opensense agent handoff https://github.com/vllm-project/vllm/issues/12345
+opensense agent apply https://github.com/vllm-project/vllm/issues/12345 -- <agent command>
+opensense test run https://github.com/vllm-project/vllm/issues/12345 -- <test command>
+opensense pr draft https://github.com/vllm-project/vllm/issues/12345
+opensense agent status https://github.com/vllm-project/vllm/issues/12345
 
 # 7. 判断仓库是否适合投入 PR
 opensense repo vllm-project/vllm --skills python,llm
@@ -189,6 +197,22 @@ $ opensense repo vllm-project/vllm --skills python,llm
 
 Repository        Score  Verdict  Signals
 vllm-project/vllm 82     Go       external contributors are getting merged; language matches your skills
+```
+
+进入本地 PR 尝试后，OpenSense 会把证据都放在同一个 issue 目录下，`agent status` 会读取这些文件并告诉你下一步：
+
+```text
+.opensense/packs/<owner>__<repo>/<issue>/
+  issue.md
+  pack.json
+  manifest.json
+  patch-proposal.md
+  sandbox.json
+  agent-handoff.md
+  agent-apply.json
+  diff.patch
+  test-run.md
+  pr-draft.md
 ```
 
 ## 核心流程
@@ -319,15 +343,25 @@ opensense issue vllm-project/vllm#12345
 opensense issue vllm-project/vllm#12345 --plan
 ```
 
-### Phase-two PR readiness
+### 5. 本地 PR 尝试闭环
 
 ```bash
 opensense pack https://github.com/vllm-project/vllm/issues/12345
 opensense patch https://github.com/vllm-project/vllm/issues/12345 --dry-run
-opensense evidence https://github.com/vllm-project/vllm/issues/12345
+opensense propose https://github.com/vllm-project/vllm/issues/12345
+opensense sandbox create https://github.com/vllm-project/vllm/issues/12345
+opensense agent handoff https://github.com/vllm-project/vllm/issues/12345
+opensense agent apply https://github.com/vllm-project/vllm/issues/12345 -- <agent command>
+opensense test run https://github.com/vllm-project/vllm/issues/12345 -- <test command>
+opensense pr draft https://github.com/vllm-project/vllm/issues/12345
+opensense agent status https://github.com/vllm-project/vllm/issues/12345
 ```
 
-`pack` writes Markdown files plus `pack.json` and `manifest.json` under `.opensense/packs/<owner>__<repo>/<issue-number>/`. `patch --dry-run` only reports suitability and does not modify source files. `evidence` creates PR summary, test evidence, and maintainer note drafts from an existing pack. If tests were not actually run, the evidence says `Not run.`
+`pack` 会在 `.opensense/packs/<owner>__<repo>/<issue-number>/` 下写入上下文包；`patch --dry-run` 只判断是否适合继续，不修改源码；`propose` 写出 `patch-proposal.md`；`sandbox create` 显式创建本地 git worktree；`agent handoff` 生成给编码 agent 的任务单；`agent apply` 只在 sandbox worktree 内运行你显式传入的命令，并记录 `agent-apply.json`、`agent-output.log`、`diff.patch`、`diffstat.txt`。
+
+`test run` 记录真实测试命令、退出码和日志；`pr draft` 基于 agent apply、diff 和 test evidence 生成本地 PR 草稿；`agent status` 则把当前 issue 的本地尝试状态汇总成一个表格，并提示下一步该做什么。
+
+这一整条链路默认都不 commit、不 push、不打开 PR、不评论 GitHub。OpenSense 负责把上下文、执行记录和 PR 草稿准备好，真正是否开 PR 仍由你人工判断。
 
 For agent clients, OpenSense also provides a read-only MCP entrypoint:
 
@@ -336,16 +370,6 @@ opensense-mcp
 ```
 
 The first MCP surface exposes `get_watchlist`, `read_pack`, and `patch_dry_run`. It reads existing local state and pack artifacts only; it does not create PRs, comments, commits, branches, or source-code changes.
-
-For the first controlled execution boundary:
-
-```bash
-opensense sandbox create https://github.com/vllm-project/vllm/issues/12345
-opensense sandbox status https://github.com/vllm-project/vllm/issues/12345
-opensense propose https://github.com/vllm-project/vllm/issues/12345
-```
-
-`sandbox create` explicitly creates a local git worktree and branch, then records `sandbox.json`. It still does not edit source files, commit, push, comment, or open PRs. `propose` writes `patch-proposal.md` from a validated pack and does not modify source files.
 
 `issue` 会回答：
 
@@ -365,7 +389,7 @@ opensense propose https://github.com/vllm-project/vllm/issues/12345
 - 是否应该在编码前先留言确认
 - PR 标题和正文草稿轮廓
 
-### 5. 评估仓库
+### 6. 评估仓库
 
 ```bash
 opensense repo vllm-project/vllm --skills python,llm
@@ -413,14 +437,27 @@ OpenSense v1 聚焦开源贡献的筛选和规划。
 - 在用户开始写代码前生成 PR 前计划
 - 在深入投入 PR 前做轻量仓库信号检查
 
-当前还不做：
+当前默认不会：
 
-- 自动修改代码
-- 代替用户打开 PR
-- 保证 PR 会被接受或合并
-- 代替用户阅读 issue 讨论和贡献指南
-- 默认搜索整个 GitHub
-- 作为项目管理或通知平台
+- 修改主工作区源码
+- commit / push
+- 评论 issue / PR
+- 创建 GitHub PR
+- 声称未运行、失败、陈旧或不一致的测试已经通过
+
+显式允许：
+
+- `sandbox create` 创建本地 worktree 和分支
+- `agent apply` 在 sandbox 内运行用户给出的命令并捕获 diff
+- `test run` 运行用户给出的测试命令并记录 exit code
+- `pr draft` 生成本地 PR 草稿
+
+仍然禁止：
+
+- obvious `git push` / `git commit` / `gh pr create` / `gh issue comment`
+- shell wrapper 形式的 agent apply
+- 泄露 secret-like 文本
+- 把未验证证据写成已验证事实
 
 ## 架构
 
@@ -438,17 +475,28 @@ src/opensense/
 │   ├── issues.py               # 获取并转换 GitHub open issue
 │   └── radar.py                # 收集仓库 PR、issue、语言等信号
 │
-├── core/                       # 排序、评分与规划领域逻辑
+├── core/                       # 排序、评分、规划与本地 PR 尝试逻辑
+│   ├── pack.py                 # 生成 issue 上下文包和安全 manifest
+│   ├── proposal.py             # 从 pack 生成 patch-proposal.md
+│   ├── sandbox.py              # 创建和读取隔离 git worktree 元数据
+│   ├── agent_workflow.py       # agent handoff/apply/status 的本地证据链
+│   ├── command_safety.py       # 阻断明显远端写入和 shell wrapper 命令
+│   ├── test_capture.py         # 捕获测试命令、退出码和日志
+│   ├── pr_draft.py             # 根据 apply/test/diff 生成本地 PR 草稿
 │   ├── radar.py                # 根据仓库信号计算贡献友好度
 │   ├── scoring.py              # 使用确定性规则评估单个 issue
 │   ├── ranking.py              # 结合技术栈匹配对候选 issue 排序
 │   └── planner.py              # 生成规则或 LLM 辅助的 PR 前计划
 │
+├── mcp/                        # 只读 MCP 入口
+│   └── server.py               # 暴露 watchlist、read_pack、patch_dry_run
+│
 ├── llm/                        # 可选 LLM 能力
 │   └── client.py               # 调用 OpenAI 兼容的 LLM 服务
 │
 └── storage/                    # 本地状态持久化
-    └── watchlist.py            # 读写仓库和技术栈 watchlist
+    ├── watchlist.py            # 读写仓库和技术栈 watchlist
+    └── packs.py                # 管理 .opensense/packs 下的 artifact 路径和校验
 ```
 
 当前实现使用 Typer/Rich CLI、GitHub API client、TOML 本地状态、确定性评分，以及可选的 LLM 辅助规划。

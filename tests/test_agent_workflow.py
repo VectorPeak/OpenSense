@@ -34,6 +34,19 @@ def test_agent_handoff_writes_local_task_brief(tmp_path: Path) -> None:
     assert "patch-proposal.md" in brief
 
 
+def test_agent_status_reports_next_step_from_partial_attempt(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+
+    result = runner.invoke(app, ["agent", "status", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Pack" in result.output
+    assert "Proposal" in result.output
+    assert "missing" in result.output
+    assert "Next: opensense propose owner/repo#7" in result.output
+
+
 def test_agent_apply_runs_only_in_sandbox_and_records_diff(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     write_valid_pack(tmp_path)
@@ -116,6 +129,42 @@ def test_pr_draft_includes_agent_apply_diff_summary(tmp_path: Path) -> None:
     assert "## Agent Apply" in draft
     assert "Status: passed" in draft
     assert "README.md" in draft
+
+
+def test_agent_status_reports_full_attempt_ready(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["agent", "handoff", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(
+        app,
+        [
+            "agent",
+            "apply",
+            "owner/repo#7",
+            "--workspace",
+            str(tmp_path),
+            "--",
+            sys.executable,
+            "-c",
+            "from pathlib import Path; Path('README.md').write_text('# Demo\\n\\nAgent change.\\n', encoding='utf-8')",
+        ],
+    ).exit_code == 0
+    assert runner.invoke(
+        app,
+        ["test", "run", "owner/repo#7", "--workspace", str(tmp_path), "--", sys.executable, "-c", "print('ok')"],
+    ).exit_code == 0
+    assert runner.invoke(app, ["pr", "draft", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+
+    result = runner.invoke(app, ["agent", "status", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "Agent handoff" in result.output
+    assert "Agent apply" in result.output
+    assert "Tests" in result.output
+    assert "PR draft" in result.output
+    assert "Review pr-draft.md" in result.output
 
 
 def test_agent_apply_rejects_obvious_remote_write_commands(tmp_path: Path) -> None:

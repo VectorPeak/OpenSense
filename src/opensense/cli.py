@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from opensense.config import OpenSenseConfig, initialize_state, load_config, validate_env_var_name
-from opensense.core.agent_workflow import generate_agent_apply, generate_agent_handoff
+from opensense.core.agent_workflow import generate_agent_apply, generate_agent_handoff, summarize_agent_status
 from opensense.core.daily import generate_daily_analysis
 from opensense.core.evidence import generate_evidence
 from opensense.core.issue_ref import parse_issue_reference
@@ -548,6 +549,29 @@ def agent_apply(
     console.print(f"Status: {result.status}")
     if result.status != "passed":
         raise typer.Exit(1)
+
+
+@agent_app.command("status")
+def agent_status(issue: str, workspace: Optional[Path] = workspace_option()) -> None:
+    """Show the local PR-attempt state for one issue."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        result = summarize_agent_status(issue_ref, workspace)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    table = Table(title=f"OpenSense attempt status: {result.issue_ref}")
+    table.add_column("Step")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for step, status, detail in result.rows:
+        table.add_row(step, status, detail)
+    console.print(table)
+    console.print(f"Next: {result.next_step}")
 
 
 @test_app.command("run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
