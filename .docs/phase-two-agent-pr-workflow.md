@@ -8,13 +8,14 @@ The product should become a contribution preparation layer, not an automatic PR 
 
 OpenSense should help users make better PR attempts, not create more PR noise.
 
-Phase two focuses on:
+Phase two and the first P3 bridge focus on:
 
 - Turning one issue into a clear context pack.
 - Separating facts, inference, and LLM suggestions.
 - Estimating whether an issue is suitable for agent-assisted work.
 - Preparing PR evidence that is honest about tests, risks, and unknowns.
 - Keeping all source-code modification and PR creation out of the default flow.
+- Creating local sandbox worktrees only through explicit `sandbox create`.
 
 ## P0 Commands
 
@@ -135,6 +136,7 @@ It should not instruct an agent to make broad refactors, update dependencies, or
 - Phase two is read-first and source-code-safe by default.
 - No automatic issue comments.
 - No automatic branch creation.
+- No implicit branch creation; only explicit `sandbox create` may create a local sandbox branch/worktree.
 - No automatic commits.
 - No automatic push.
 - No automatic PR creation.

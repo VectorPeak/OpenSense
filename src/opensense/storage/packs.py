@@ -26,6 +26,8 @@ class PackPaths:
     maintainer_note_md: Path
     pack_json: Path
     manifest_json: Path
+    sandbox_json: Path
+    patch_proposal_md: Path
 
 
 PACK_FILENAMES = (
@@ -68,6 +70,8 @@ def pack_paths(issue_ref: IssueRef, workspace: Path | None = None) -> PackPaths:
         maintainer_note_md=root / "maintainer-note.md",
         pack_json=root / "pack.json",
         manifest_json=root / "manifest.json",
+        sandbox_json=root / "sandbox.json",
+        patch_proposal_md=root / "patch-proposal.md",
     )
 
 

@@ -17,7 +17,9 @@ from opensense.core.issue_ref import parse_issue_reference
 from opensense.core.pack import generate_pack
 from opensense.core.patch import patch_dry_run
 from opensense.core.planner import generate_plan
+from opensense.core.proposal import generate_patch_proposal
 from opensense.core.ranking import rank_issues
+from opensense.core.sandbox import create_sandbox, load_sandbox
 from opensense.core.scoring import score_issue
 from opensense.doctor import has_errors, run_checks
 from opensense.github.client import GitHubClient
@@ -31,9 +33,11 @@ app = typer.Typer(help="Daily PR opportunity finder for known open-source reposi
 watch_app = typer.Typer(help="Manage watched repositories and skills.")
 watch_repo_app = typer.Typer(help="Manage watched repositories.")
 watch_skill_app = typer.Typer(help="Manage watched skills.")
+sandbox_app = typer.Typer(help="Manage isolated local worktrees for issue attempts.")
 app.add_typer(watch_app, name="watch")
 watch_app.add_typer(watch_repo_app, name="repo")
 watch_app.add_typer(watch_skill_app, name="skill")
+app.add_typer(sandbox_app, name="sandbox")
 console = Console()
 
 # Keep the product surface deliberately small. The CLI exposes five top-level
@@ -421,6 +425,71 @@ def patch(
             title="Patch Dry Run",
         )
     )
+
+
+@app.command("propose")
+def propose(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing patch-proposal.md."),
+) -> None:
+    """Write a patch proposal from an existing validated context pack."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        path = generate_patch_proposal(issue_ref, workspace, force=force)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileExistsError, FileNotFoundError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Patch proposal written to {path}")
+
+
+@sandbox_app.command("create")
+def sandbox_create(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    allow_dirty: bool = typer.Option(False, "--allow-dirty", help="Allow creating a sandbox from a dirty workspace and record the dirty snapshot."),
+) -> None:
+    """Create an isolated git worktree for one issue."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        info = create_sandbox(issue_ref, workspace, allow_dirty=allow_dirty)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileExistsError, FileNotFoundError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Sandbox created at {info.worktree_path}")
+    console.print(f"Branch: {info.branch_name}")
+
+
+@sandbox_app.command("status")
+def sandbox_status(issue: str, workspace: Optional[Path] = workspace_option()) -> None:
+    """Show sandbox metadata for one issue."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        info = load_sandbox(issue_ref, workspace)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    table = Table(title=f"Sandbox {info.issue_ref}")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("branch", info.branch_name)
+    table.add_row("worktree", info.worktree_path)
+    table.add_row("base_commit", info.base_commit or "unknown")
+    table.add_row("dirty_policy", info.dirty_policy)
+    table.add_row("safety_status", info.safety_status)
+    console.print(table)
 
 
 @app.command()

@@ -249,7 +249,18 @@ def test_help_exposes_current_top_level_product_commands() -> None:
     registered_commands = {command.name or command.callback.__name__ for command in app.registered_commands}
     registered_groups = {group.name for group in app.registered_groups}
 
-    assert registered_commands | registered_groups == {"init", "watch", "daily", "issue", "repo", "pack", "evidence", "patch"}
+    assert registered_commands | registered_groups == {
+        "init",
+        "watch",
+        "daily",
+        "issue",
+        "repo",
+        "pack",
+        "evidence",
+        "patch",
+        "propose",
+        "sandbox",
+    }
     for retired_name in ("doctor", "inspect", "radar"):
         assert retired_name not in result.output
 

@@ -22,6 +22,9 @@ opensense issue <owner/repo#issue>
 opensense issue <owner/repo#issue> --plan
 opensense pack <issue-url>
 opensense patch <issue-url> --dry-run
+opensense propose <issue-url>
+opensense sandbox create <issue-url>
+opensense sandbox status <issue-url>
 opensense evidence <issue-url>
 opensense repo <owner/repo>
 opensense-mcp
@@ -87,5 +90,6 @@ name = "run-llama/llama_index"
 - Keep phase-two PR readiness commands read-first: `pack` and `evidence` write only under `.opensense/packs/`, while `patch --dry-run` must not modify source files.
 - `pack.json` is the future MCP/agent-facing artifact; `manifest.json` records generation metadata, local repo context, dirty-worktree status, and secret scan status.
 - `opensense-mcp` is read-only. It exposes watchlist and existing pack data to agent clients; it must not create packs, write patches, comment, commit, push, or open PRs.
+- `sandbox create` is the first controlled execution boundary. It explicitly creates a local git worktree and branch, writes `sandbox.json`, and still must not edit source, commit, push, comment, or open PRs.
 - Keep cache simple until cross-day analytics becomes necessary.
 - Prefer Markdown/Rich output before building a complex HTML report.

@@ -337,6 +337,16 @@ opensense-mcp
 
 The first MCP surface exposes `get_watchlist`, `read_pack`, and `patch_dry_run`. It reads existing local state and pack artifacts only; it does not create PRs, comments, commits, branches, or source-code changes.
 
+For the first controlled execution boundary:
+
+```bash
+opensense sandbox create https://github.com/vllm-project/vllm/issues/12345
+opensense sandbox status https://github.com/vllm-project/vllm/issues/12345
+opensense propose https://github.com/vllm-project/vllm/issues/12345
+```
+
+`sandbox create` explicitly creates a local git worktree and branch, then records `sandbox.json`. It still does not edit source files, commit, push, comment, or open PRs. `propose` writes `patch-proposal.md` from a validated pack and does not modify source files.
+
 `issue` 会回答：
 
 - 这个 issue 在说什么？
