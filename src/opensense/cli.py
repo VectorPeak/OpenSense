@@ -17,10 +17,12 @@ from opensense.core.issue_ref import parse_issue_reference
 from opensense.core.pack import generate_pack
 from opensense.core.patch import patch_dry_run
 from opensense.core.planner import generate_plan
+from opensense.core.pr_draft import generate_pr_draft
 from opensense.core.proposal import generate_patch_proposal
 from opensense.core.ranking import rank_issues
 from opensense.core.sandbox import create_sandbox, load_sandbox
 from opensense.core.scoring import score_issue
+from opensense.core.test_capture import capture_test_run
 from opensense.doctor import has_errors, run_checks
 from opensense.github.client import GitHubClient
 from opensense.github.issues import fetch_issue, fetch_open_issues
@@ -34,10 +36,14 @@ watch_app = typer.Typer(help="Manage watched repositories and skills.")
 watch_repo_app = typer.Typer(help="Manage watched repositories.")
 watch_skill_app = typer.Typer(help="Manage watched skills.")
 sandbox_app = typer.Typer(help="Manage isolated local worktrees for issue attempts.")
+test_app = typer.Typer(help="Capture local test evidence for issue attempts.")
+pr_app = typer.Typer(help="Generate local pull request drafts.")
 app.add_typer(watch_app, name="watch")
 watch_app.add_typer(watch_repo_app, name="repo")
 watch_app.add_typer(watch_skill_app, name="skill")
 app.add_typer(sandbox_app, name="sandbox")
+app.add_typer(test_app, name="test")
+app.add_typer(pr_app, name="pr")
 console = Console()
 
 # Keep the product surface deliberately small. The CLI exposes five top-level
@@ -490,6 +496,55 @@ def sandbox_status(issue: str, workspace: Optional[Path] = workspace_option()) -
     table.add_row("dirty_policy", info.dirty_policy)
     table.add_row("safety_status", info.safety_status)
     console.print(table)
+
+
+@test_app.command("run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def test_run(
+    ctx: typer.Context,
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing test evidence files."),
+    timeout: int = typer.Option(600, "--timeout", min=1, help="Maximum command runtime in seconds."),
+) -> None:
+    """Run one explicit local test command and capture auditable evidence."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        result = capture_test_run(issue_ref, tuple(ctx.args), workspace, force=force, timeout=timeout)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileExistsError, FileNotFoundError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Test evidence written to {result.root}")
+    for path in result.written_files:
+        console.print(f"- {path.name}")
+    console.print(f"Status: {result.status}")
+    if result.status != "passed":
+        raise typer.Exit(1)
+
+
+@pr_app.command("draft")
+def pr_draft(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing PR draft."),
+) -> None:
+    """Generate a local PR title/body draft from pack and test evidence."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        result = generate_pr_draft(issue_ref, workspace, force=force)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileExistsError, FileNotFoundError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"PR draft written to {result.root}")
+    for path in result.written_files:
+        console.print(f"- {path.name}")
 
 
 @app.command()

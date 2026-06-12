@@ -28,6 +28,11 @@ class PackPaths:
     manifest_json: Path
     sandbox_json: Path
     patch_proposal_md: Path
+    test_run_json: Path
+    test_run_md: Path
+    test_output_log: Path
+    pr_draft_json: Path
+    pr_draft_md: Path
 
 
 PACK_FILENAMES = (
@@ -72,6 +77,11 @@ def pack_paths(issue_ref: IssueRef, workspace: Path | None = None) -> PackPaths:
         manifest_json=root / "manifest.json",
         sandbox_json=root / "sandbox.json",
         patch_proposal_md=root / "patch-proposal.md",
+        test_run_json=root / "test-run.json",
+        test_run_md=root / "test-run.md",
+        test_output_log=root / "test-output.log",
+        pr_draft_json=root / "pr-draft.json",
+        pr_draft_md=root / "pr-draft.md",
     )
 
 
