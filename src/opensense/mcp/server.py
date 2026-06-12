@@ -9,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from opensense.core.agent_workflow import summarize_agent_status
 from opensense.core.issue_ref import parse_issue_reference
 from opensense.core.patch import patch_dry_run
 from opensense.models import Issue
@@ -43,6 +44,45 @@ TOOLS: tuple[dict[str, Any], ...] = (
     {
         "name": "patch_dry_run",
         "description": "Evaluate patch suitability from an existing pack.json without modifying source files.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_ref": {"type": "string"},
+                "workspace": {"type": "string"},
+            },
+            "required": ["issue_ref"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_attempt_status",
+        "description": "Read local OpenSense attempt status for one issue without modifying files.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_ref": {"type": "string"},
+                "workspace": {"type": "string"},
+            },
+            "required": ["issue_ref"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "read_pr_draft",
+        "description": "Read a local pr-draft.md artifact for one issue attempt.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "issue_ref": {"type": "string"},
+                "workspace": {"type": "string"},
+            },
+            "required": ["issue_ref"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "read_agent_handoff",
+        "description": "Read a local agent-handoff.md artifact for one issue attempt.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -100,6 +140,14 @@ def issue_from_pack(pack: dict[str, Any]) -> Issue:
     )
 
 
+def require_artifact_metadata(path: Path, *, kind: str, issue_ref: str, label: str) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f"{label} metadata not found.")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("kind") != kind or data.get("issue_ref") != issue_ref:
+        raise ValueError(f"{label} metadata does not match the requested issue.")
+
+
 def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     workspace = workspace_arg(arguments)
     if name == "get_watchlist":
@@ -111,6 +159,25 @@ def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         payload = load_pack_payload(str(arguments["issue_ref"]), workspace)
         result = patch_dry_run(issue_from_pack(payload["pack"]))
         return text_result(asdict(result))
+    if name == "get_attempt_status":
+        issue_ref = parse_issue_reference(str(arguments["issue_ref"]))
+        return text_result(summarize_agent_status(issue_ref, workspace).to_dict())
+    if name == "read_pr_draft":
+        issue_ref = parse_issue_reference(str(arguments["issue_ref"]))
+        paths = pack_paths(issue_ref, workspace)
+        load_pack_payload(issue_ref.ref, workspace)
+        require_artifact_metadata(paths.pr_draft_json, kind="opensense.pr_draft", issue_ref=issue_ref.ref, label="PR draft")
+        if not paths.pr_draft_md.exists():
+            raise FileNotFoundError("PR draft not found. Run `opensense pr draft <issue-url>` first.")
+        return text_result({"issue_ref": issue_ref.ref, "path": str(paths.pr_draft_md), "markdown": paths.pr_draft_md.read_text(encoding="utf-8")})
+    if name == "read_agent_handoff":
+        issue_ref = parse_issue_reference(str(arguments["issue_ref"]))
+        paths = pack_paths(issue_ref, workspace)
+        load_pack_payload(issue_ref.ref, workspace)
+        require_artifact_metadata(paths.agent_handoff_json, kind="opensense.agent_handoff", issue_ref=issue_ref.ref, label="Agent handoff")
+        if not paths.agent_handoff_md.exists():
+            raise FileNotFoundError("Agent handoff not found. Run `opensense agent handoff <issue-url>` first.")
+        return text_result({"issue_ref": issue_ref.ref, "path": str(paths.agent_handoff_md), "markdown": paths.agent_handoff_md.read_text(encoding="utf-8")})
     raise ValueError(f"Unknown tool: {name}")
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from opensense.config import OpenSenseConfig, initialize_state
 from opensense.core.issue_ref import parse_issue_reference
 from opensense.mcp.server import handle_request
-from opensense.storage.packs import pack_paths
+from opensense.storage.packs import PACK_FILENAMES, pack_paths
 
 
 def call(method: str, params: dict | None = None, request_id: int = 1) -> dict:
@@ -29,6 +29,8 @@ def write_sample_pack(workspace: Path) -> None:
     issue_ref = parse_issue_reference("owner/repo#7")
     paths = pack_paths(issue_ref, workspace)
     paths.root.mkdir(parents=True, exist_ok=True)
+    for name in PACK_FILENAMES:
+        (paths.root / name).write_text(f"# {name}\n", encoding="utf-8")
     pack = {
         "schema_version": 1,
         "issue": {
@@ -60,7 +62,7 @@ def test_mcp_initialize_and_tools_list() -> None:
 
     assert init_response["result"]["serverInfo"]["name"] == "opensense"
     tool_names = {tool["name"] for tool in tools_response["result"]["tools"]}
-    assert tool_names == {"get_watchlist", "read_pack", "patch_dry_run"}
+    assert tool_names == {"get_watchlist", "read_pack", "patch_dry_run", "get_attempt_status", "read_pr_draft", "read_agent_handoff"}
 
 
 def test_mcp_get_watchlist_reads_local_state(monkeypatch, tmp_path: Path) -> None:
@@ -138,6 +140,39 @@ def test_mcp_rejects_pack_issue_mismatch(monkeypatch, tmp_path: Path) -> None:
     paths.manifest_json.write_text(json.dumps(manifest), encoding="utf-8")
 
     response = tool_call("read_pack", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"})
+
+    assert response["error"]["code"] == -32000
+    assert "does not match" in response["error"]["message"]
+
+
+def test_mcp_reads_attempt_status_and_local_drafts(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
+    write_sample_pack(tmp_path)
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+    paths.patch_proposal_md.write_text("# Patch Proposal\n", encoding="utf-8")
+    paths.agent_handoff_md.write_text("# Agent Handoff\n", encoding="utf-8")
+    paths.agent_handoff_json.write_text(json.dumps({"kind": "opensense.agent_handoff", "issue_ref": "owner/repo#7"}), encoding="utf-8")
+    paths.pr_draft_md.write_text("# PR Draft\n", encoding="utf-8")
+    paths.pr_draft_json.write_text(json.dumps({"kind": "opensense.pr_draft", "issue_ref": "owner/repo#7"}), encoding="utf-8")
+
+    status = text_payload(tool_call("get_attempt_status", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"}))
+    handoff = text_payload(tool_call("read_agent_handoff", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"}))
+    draft = text_payload(tool_call("read_pr_draft", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"}))
+
+    assert status["issue_ref"] == "owner/repo#7"
+    assert status["steps"][0]["status"] == "ready"
+    assert handoff["markdown"] == "# Agent Handoff\n"
+    assert draft["markdown"] == "# PR Draft\n"
+
+
+def test_mcp_rejects_pr_draft_without_matching_metadata(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("OPENSENSE_MCP_WORKSPACE_ROOT", str(tmp_path))
+    write_sample_pack(tmp_path)
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+    paths.pr_draft_md.write_text("# PR Draft\n", encoding="utf-8")
+    paths.pr_draft_json.write_text(json.dumps({"kind": "opensense.pr_draft", "issue_ref": "owner/repo#8"}), encoding="utf-8")
+
+    response = tool_call("read_pr_draft", {"workspace": str(tmp_path), "issue_ref": "owner/repo#7"})
 
     assert response["error"]["code"] == -32000
     assert "does not match" in response["error"]["message"]

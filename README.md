@@ -355,11 +355,16 @@ opensense agent apply https://github.com/vllm-project/vllm/issues/12345 -- <agen
 opensense test run https://github.com/vllm-project/vllm/issues/12345 -- <test command>
 opensense pr draft https://github.com/vllm-project/vllm/issues/12345
 opensense agent status https://github.com/vllm-project/vllm/issues/12345
+opensense agent status https://github.com/vllm-project/vllm/issues/12345 --json
+opensense attempt list
+opensense attempt open https://github.com/vllm-project/vllm/issues/12345
 ```
 
 `pack` 会在 `.opensense/packs/<owner>__<repo>/<issue-number>/` 下写入上下文包；`patch --dry-run` 只判断是否适合继续，不修改源码；`propose` 写出 `patch-proposal.md`；`sandbox create` 显式创建本地 git worktree；`agent handoff` 生成给编码 agent 的任务单；`agent apply` 只在 sandbox worktree 内运行你显式传入的命令，并记录 `agent-apply.json`、`agent-output.log`、`diff.patch`、`diffstat.txt`。
 
 `test run` 记录真实测试命令、退出码和日志；`pr draft` 基于 agent apply、diff 和 test evidence 生成本地 PR 草稿；`agent status` 则把当前 issue 的本地尝试状态汇总成一个表格，并提示下一步该做什么。
+
+如果你想把 OpenSense 接到 MCP、Skill 或 Web UI，优先使用 `agent status --json` 和 `attempt list --json`。`attempt open` 只展示本地 artifact 路径，不会打开 GitHub 或发起远端写操作。
 
 这一整条链路默认都不 commit、不 push、不打开 PR、不评论 GitHub。OpenSense 负责把上下文、执行记录和 PR 草稿准备好，真正是否开 PR 仍由你人工判断。
 
@@ -369,7 +374,7 @@ For agent clients, OpenSense also provides a read-only MCP entrypoint:
 opensense-mcp
 ```
 
-The first MCP surface exposes `get_watchlist`, `read_pack`, and `patch_dry_run`. It reads existing local state and pack artifacts only; it does not create PRs, comments, commits, branches, or source-code changes.
+The MCP surface exposes `get_watchlist`, `read_pack`, `patch_dry_run`, `get_attempt_status`, `read_pr_draft`, and `read_agent_handoff`. It reads existing local state and pack artifacts only; it does not create PRs, comments, commits, branches, or source-code changes.
 
 `issue` 会回答：
 

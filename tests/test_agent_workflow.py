@@ -47,6 +47,20 @@ def test_agent_status_reports_next_step_from_partial_attempt(tmp_path: Path) -> 
     assert "Next: opensense propose owner/repo#7" in result.output
 
 
+def test_agent_status_json_reports_steps_and_next_step(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+
+    result = runner.invoke(app, ["agent", "status", "owner/repo#7", "--json", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["issue_ref"] == "owner/repo#7"
+    assert payload["next_step"] == "opensense propose owner/repo#7"
+    assert payload["steps"][0]["step"] == "Pack"
+    assert payload["steps"][0]["status"] == "ready"
+
+
 def test_agent_apply_runs_only_in_sandbox_and_records_diff(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     write_valid_pack(tmp_path)
@@ -165,6 +179,27 @@ def test_agent_status_reports_full_attempt_ready(tmp_path: Path) -> None:
     assert "Tests" in result.output
     assert "PR draft" in result.output
     assert "Review pr-draft.md" in result.output
+
+
+def test_attempt_list_and_open_read_local_artifacts(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["agent", "handoff", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+
+    listed = runner.invoke(app, ["attempt", "list", "--json", "--workspace", str(tmp_path)])
+    opened = runner.invoke(app, ["attempt", "open", "owner/repo#7", "--json", "--workspace", str(tmp_path)])
+
+    assert listed.exit_code == 0, listed.output
+    list_payload = json.loads(listed.output)
+    assert list_payload["attempts"][0]["issue_ref"] == "owner/repo#7"
+    assert list_payload["attempts"][0]["status"] == "ready_for_apply"
+    assert opened.exit_code == 0, opened.output
+    open_payload = json.loads(opened.output)
+    assert open_payload["issue_ref"] == "owner/repo#7"
+    assert open_payload["agent_handoff"].endswith("agent-handoff.md")
+    assert open_payload["pr_draft"] is None
 
 
 def test_agent_apply_rejects_obvious_remote_write_commands(tmp_path: Path) -> None:

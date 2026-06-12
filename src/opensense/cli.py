@@ -13,6 +13,7 @@ from rich.table import Table
 
 from opensense.config import OpenSenseConfig, initialize_state, load_config, validate_env_var_name
 from opensense.core.agent_workflow import generate_agent_apply, generate_agent_handoff, summarize_agent_status
+from opensense.core.attempts import list_attempts, open_attempt
 from opensense.core.daily import generate_daily_analysis
 from opensense.core.evidence import generate_evidence
 from opensense.core.issue_ref import parse_issue_reference
@@ -41,6 +42,7 @@ sandbox_app = typer.Typer(help="Manage isolated local worktrees for issue attemp
 test_app = typer.Typer(help="Capture local test evidence for issue attempts.")
 pr_app = typer.Typer(help="Generate local pull request drafts.")
 agent_app = typer.Typer(help="Prepare and run controlled coding-agent attempts.")
+attempt_app = typer.Typer(help="Inspect local PR attempt artifacts.")
 app.add_typer(watch_app, name="watch")
 watch_app.add_typer(watch_repo_app, name="repo")
 watch_app.add_typer(watch_skill_app, name="skill")
@@ -48,6 +50,7 @@ app.add_typer(sandbox_app, name="sandbox")
 app.add_typer(test_app, name="test")
 app.add_typer(pr_app, name="pr")
 app.add_typer(agent_app, name="agent")
+app.add_typer(attempt_app, name="attempt")
 console = Console()
 
 # Keep the product surface deliberately small. The CLI exposes five top-level
@@ -552,7 +555,11 @@ def agent_apply(
 
 
 @agent_app.command("status")
-def agent_status(issue: str, workspace: Optional[Path] = workspace_option()) -> None:
+def agent_status(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
     """Show the local PR-attempt state for one issue."""
 
     try:
@@ -564,6 +571,9 @@ def agent_status(issue: str, workspace: Optional[Path] = workspace_option()) -> 
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+    if as_json:
+        typer.echo(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        return
     table = Table(title=f"OpenSense attempt status: {result.issue_ref}")
     table.add_column("Step")
     table.add_column("Status")
@@ -572,6 +582,56 @@ def agent_status(issue: str, workspace: Optional[Path] = workspace_option()) -> 
         table.add_row(step, status, detail)
     console.print(table)
     console.print(f"Next: {result.next_step}")
+
+
+@attempt_app.command("list")
+def attempt_list(
+    workspace: Optional[Path] = workspace_option(),
+    limit: int = typer.Option(20, "--limit", min=1, max=100, help="Maximum attempts to show."),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    """List local issue attempts under .opensense/packs."""
+
+    attempts = list_attempts(workspace, limit=limit)
+    if as_json:
+        typer.echo(json.dumps({"attempts": [item.to_dict() for item in attempts]}, indent=2, ensure_ascii=False))
+        return
+    table = Table(title="OpenSense attempts")
+    table.add_column("Issue")
+    table.add_column("Status")
+    table.add_column("Next")
+    table.add_column("Root")
+    for item in attempts:
+        table.add_row(item.issue_ref, item.status, item.next_step, str(item.root))
+    console.print(table)
+
+
+@attempt_app.command("open")
+def attempt_open(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON."),
+) -> None:
+    """Show local paths for one issue attempt."""
+
+    try:
+        result = open_attempt(issue, workspace)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    if as_json:
+        typer.echo(json.dumps(result.to_dict(), indent=2, ensure_ascii=False))
+        return
+    console.print(f"Attempt root: {result.root}")
+    if result.pr_draft:
+        console.print(f"PR draft: {result.pr_draft}")
+    if result.agent_handoff:
+        console.print(f"Agent handoff: {result.agent_handoff}")
+    if result.diffstat:
+        console.print(f"Diffstat: {result.diffstat}")
 
 
 @test_app.command("run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

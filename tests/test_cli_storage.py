@@ -263,6 +263,7 @@ def test_help_exposes_current_top_level_product_commands() -> None:
         "test",
         "pr",
         "agent",
+        "attempt",
     }
     for retired_name in ("doctor", "inspect", "radar"):
         assert retired_name not in result.output

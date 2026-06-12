@@ -34,6 +34,14 @@ class AgentStatusResult:
     rows: tuple[tuple[str, str, str], ...]
     next_step: str
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "issue_ref": self.issue_ref,
+            "root": str(self.root),
+            "steps": [{"step": step, "status": status, "detail": detail} for step, status, detail in self.rows],
+            "next_step": self.next_step,
+        }
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
