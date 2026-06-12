@@ -208,7 +208,10 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             return success_response(request_id, {"tools": list(TOOLS)})
         if method == "tools/call":
             params = request.get("params") or {}
-            return success_response(request_id, call_tool(str(params.get("name")), dict(params.get("arguments") or {})))
+            arguments = params.get("arguments") if "arguments" in params else {}
+            if not isinstance(arguments, dict):
+                raise ValueError("Tool arguments must be an object.")
+            return success_response(request_id, call_tool(str(params.get("name")), arguments))
         return error_response(request_id, -32601, f"Method not found: {method}")
     except Exception as exc:
         return error_response(request_id, -32000, str(exc))

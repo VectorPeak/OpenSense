@@ -227,6 +227,66 @@ def test_pr_draft_downgrades_invalid_test_run_instead_of_claiming_passed(tmp_pat
     assert "passed" not in draft.lower()
 
 
+def test_pr_draft_downgrades_agent_apply_when_diffstat_artifact_missing(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(
+        app,
+        [
+            "agent",
+            "apply",
+            "owner/repo#7",
+            "--workspace",
+            str(tmp_path),
+            "--",
+            sys.executable,
+            "-c",
+            "from pathlib import Path; Path('README.md').write_text('# Demo\\n\\nAgent change.\\n', encoding='utf-8')",
+        ],
+    ).exit_code == 0
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    (root / "diffstat.txt").unlink()
+
+    result = runner.invoke(app, ["pr", "draft", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    metadata = json.loads((root / "pr-draft.json").read_text(encoding="utf-8"))
+    draft = (root / "pr-draft.md").read_text(encoding="utf-8")
+    assert metadata["agent_apply_status"] == "not_verified"
+    assert "diff evidence is missing" in draft
+
+
+def test_pr_draft_downgrades_passed_test_when_output_artifact_missing(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    assert runner.invoke(
+        app,
+        [
+            "test",
+            "run",
+            "owner/repo#7",
+            "--workspace",
+            str(tmp_path),
+            "--",
+            sys.executable,
+            "-c",
+            "print('ok')",
+        ],
+    ).exit_code == 0
+    (root / "test-output.log").unlink()
+
+    result = runner.invoke(app, ["pr", "draft", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    metadata = json.loads((root / "pr-draft.json").read_text(encoding="utf-8"))
+    draft = (root / "pr-draft.md").read_text(encoding="utf-8")
+    assert metadata["test_status"] == "not_verified"
+    assert "test output evidence is missing" in draft
+
+
 def test_pr_draft_marks_test_result_stale_after_local_changes(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     write_valid_pack(tmp_path)
@@ -317,3 +377,54 @@ def test_test_run_detects_indirect_commit_and_pr_draft_downgrades(tmp_path: Path
     assert draft_result.exit_code == 0, draft_result.output
     draft = (root / "pr-draft.md").read_text(encoding="utf-8")
     assert "Status: not_verified" in draft
+
+
+def test_test_run_rejects_sandbox_json_pointing_outside_sandbox_root(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    outside = tmp_path / "outside-test-cwd"
+    outside.mkdir()
+    sandbox = json.loads((root / "sandbox.json").read_text(encoding="utf-8"))
+    sandbox["real_worktree_path"] = str(outside)
+    (root / "sandbox.json").write_text(json.dumps(sandbox), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["test", "run", "owner/repo#7", "--workspace", str(tmp_path), "--", sys.executable, "-c", "print('nope')"],
+    )
+
+    assert result.exit_code == 1
+    assert "must stay inside" in result.output
+    assert not (root / "test-run.json").exists()
+
+
+def test_pr_draft_downgrades_test_run_from_different_cwd(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    assert runner.invoke(
+        app,
+        [
+            "test",
+            "run",
+            "owner/repo#7",
+            "--workspace",
+            str(tmp_path),
+            "--",
+            sys.executable,
+            "-c",
+            "print('ok')",
+        ],
+    ).exit_code == 0
+    data = json.loads((root / "test-run.json").read_text(encoding="utf-8"))
+    data["cwd"] = str(tmp_path / "some-other-worktree")
+    (root / "test-run.json").write_text(json.dumps(data), encoding="utf-8")
+
+    result = runner.invoke(app, ["pr", "draft", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    metadata = json.loads((root / "pr-draft.json").read_text(encoding="utf-8"))
+    assert metadata["test_status"] == "not_verified"

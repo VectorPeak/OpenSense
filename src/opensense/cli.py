@@ -205,21 +205,15 @@ def llm_config_for_workspace(workspace: Optional[Path], model: Optional[str] = N
 
 
 def find_open_issue(workspace: Optional[Path], issue_ref: str):
-    """Fetch one issue by scanning recent open issues from its repository.
+    """Fetch one issue directly by reference."""
 
-    This keeps the first MVP small: we reuse the same GitHub issue list endpoint
-    as `daily` instead of adding another issue-specific endpoint and response
-    shape. The trade-off is that very old open issues may not appear if they are
-    outside the latest 100 open issues.
-    """
     repo, number = parse_issue_ref(issue_ref)
     client = github_client_for_workspace(workspace)
-    candidates = fetch_open_issues(client, repo, limit=100)
-    match = next((item for item in candidates if item.number == number), None)
-    if match is None:
-        typer.echo(f"{issue_ref} was not found in the latest open issues.", err=True)
-        raise typer.Exit(1)
-    return match
+    try:
+        return fetch_issue(client, repo, number)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
 
 
 def fetch_one_issue(workspace: Optional[Path], issue_text: str):

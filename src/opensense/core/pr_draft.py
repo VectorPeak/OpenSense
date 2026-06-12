@@ -69,10 +69,18 @@ def load_test_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, Any]:
     valid = (
         data.get("kind") == "opensense.test_run"
         and data.get("issue_ref") == issue_ref.ref
+        and str(data.get("cwd") or "") == str(cwd)
         and status in {"passed", "failed", "timeout"}
         and isinstance(command, list)
         and data.get("git_commit_performed") is False
     )
+    missing_evidence: list[str] = []
+    if not paths.test_output_log.exists():
+        missing_evidence.append("test output evidence is missing")
+    if not paths.test_run_md.exists():
+        missing_evidence.append("test markdown evidence is missing")
+    if missing_evidence:
+        valid = False
     if status == "passed" and (exit_code != 0 or not command):
         valid = False
     current_commit = git_output(cwd, ["rev-parse", "HEAD"])
@@ -86,7 +94,7 @@ def load_test_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, Any]:
             "exit_code": None,
             "command": [],
             "duration_seconds": None,
-            "message": "Stored test-run.json is invalid or inconsistent, so this draft does not treat it as verification.",
+            "message": "; ".join(missing_evidence) or "Stored test-run.json is invalid or inconsistent, so this draft does not treat it as verification.",
         }
     if stale:
         return {
@@ -129,6 +137,15 @@ def load_agent_apply_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, A
         and isinstance(modified_files, list)
         and data.get("git_commit_performed") is False
     )
+    missing_evidence: list[str] = []
+    if not paths.agent_output_log.exists():
+        missing_evidence.append("agent output evidence is missing")
+    if not paths.diff_patch.exists():
+        missing_evidence.append("diff patch evidence is missing")
+    if not paths.diffstat_txt.exists():
+        missing_evidence.append("diff evidence is missing")
+    if missing_evidence:
+        valid = False
     if status == "passed" and (exit_code != 0 or not command):
         valid = False
     current_commit = git_output(cwd, ["rev-parse", "HEAD"])
@@ -141,7 +158,7 @@ def load_agent_apply_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, A
             "command": [],
             "modified_files": [],
             "diffstat": "",
-            "message": "Stored agent-apply.json is invalid or inconsistent, so this draft does not treat it as applied.",
+            "message": "; ".join(missing_evidence) or "Stored agent-apply.json is invalid or inconsistent, so this draft does not treat it as applied.",
         }
     if stale:
         return {

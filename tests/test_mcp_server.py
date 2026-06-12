@@ -176,3 +176,12 @@ def test_mcp_rejects_pr_draft_without_matching_metadata(monkeypatch, tmp_path: P
 
     assert response["error"]["code"] == -32000
     assert "does not match" in response["error"]["message"]
+
+
+def test_mcp_tools_call_rejects_non_object_arguments_without_traceback() -> None:
+    for arguments in ("bad", ["bad"], None):
+        response = call("tools/call", {"name": "get_watchlist", "arguments": arguments})
+
+        assert response["error"]["code"] == -32000
+        assert "Tool arguments must be an object" in response["error"]["message"]
+        assert "Traceback" not in response["error"]["message"]

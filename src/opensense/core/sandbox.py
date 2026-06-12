@@ -73,6 +73,9 @@ def dirty_snapshot(workspace: Path) -> str:
 
 
 def git_state_in_progress(workspace: Path) -> str | None:
+    top_level = git_output(workspace, ["rev-parse", "--show-toplevel"])
+    if not top_level or Path(top_level).resolve() != workspace.resolve():
+        return "git metadata unavailable"
     git_dir_text = git_output(workspace, ["rev-parse", "--git-dir"])
     if not git_dir_text:
         return "git metadata unavailable"

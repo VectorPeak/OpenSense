@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from opensense.cli import app
 from opensense.core.issue_ref import parse_issue_reference
+from opensense.core.sandbox import create_sandbox
 from opensense.storage.packs import PACK_FILENAMES, pack_paths
 
 
@@ -141,3 +142,55 @@ def test_sandbox_status_reads_existing_metadata(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "opensense/sandbox/" in result.output
+
+
+def test_sandbox_create_rejects_worktree_path_outside_sandbox_root(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    issue_ref = parse_issue_reference("owner/repo#7")
+    outside = tmp_path / "escape-worktree"
+
+    try:
+        create_sandbox(issue_ref, tmp_path, worktree_path=outside)
+    except ValueError as exc:
+        assert "must stay inside" in str(exc)
+    else:
+        raise AssertionError("create_sandbox accepted a worktree outside the sandbox root")
+
+    assert not outside.exists()
+    assert not (tmp_path / ".opensense" / "packs" / "owner__repo" / "7" / "sandbox.json").exists()
+
+
+def test_sandbox_create_rejects_existing_branch_without_worktree_side_effects(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert git(tmp_path, "branch", "opensense/sandbox/owner-repo-7").returncode == 0
+
+    result = runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "branch already exists" in result.output
+    assert not (tmp_path / ".opensense" / "sandboxes" / "owner-repo-7" / "worktree").exists()
+    assert not (tmp_path / ".opensense" / "packs" / "owner__repo" / "7" / "sandbox.json").exists()
+
+
+def test_sandbox_create_rejects_merge_in_progress(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    (tmp_path / ".git" / "MERGE_HEAD").write_text("deadbeef\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "merge in progress" in result.output
+    assert not (tmp_path / ".opensense" / "sandboxes" / "owner-repo-7" / "worktree").exists()
+
+
+def test_sandbox_create_reports_non_git_workspace_before_dirty_message(tmp_path: Path) -> None:
+    write_valid_pack(tmp_path)
+
+    result = runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "git metadata unavailable" in result.output
+    assert "uncommitted changes" not in result.output

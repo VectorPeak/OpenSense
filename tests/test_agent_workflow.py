@@ -116,6 +116,80 @@ def test_agent_apply_requires_proposal_and_sandbox(tmp_path: Path) -> None:
     assert not (tmp_path / ".opensense" / "packs" / "owner__repo" / "7" / "agent-apply.json").exists()
 
 
+def test_agent_handoff_rejects_missing_patch_proposal_without_artifacts(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+    paths.patch_proposal_md.unlink()
+
+    result = runner.invoke(app, ["agent", "handoff", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "Patch proposal not found" in result.output
+    assert not paths.agent_handoff_json.exists()
+    assert not paths.agent_handoff_md.exists()
+
+
+def test_agent_apply_rejects_sandbox_json_pointing_outside_sandbox_root(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+    outside = tmp_path / "outside-worktree"
+    outside.mkdir()
+    sandbox = json.loads(paths.sandbox_json.read_text(encoding="utf-8"))
+    sandbox["real_worktree_path"] = str(outside)
+    paths.sandbox_json.write_text(json.dumps(sandbox), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["agent", "apply", "owner/repo#7", "--workspace", str(tmp_path), "--", sys.executable, "-c", "print('nope')"],
+    )
+
+    assert result.exit_code == 1
+    assert "must stay inside" in result.output
+    assert not paths.agent_apply_json.exists()
+    assert not paths.agent_output_log.exists()
+
+
+def test_agent_apply_timeout_records_partial_redacted_output(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+    secret = "sk-123456789012345678901234567890"
+
+    result = runner.invoke(
+        app,
+        [
+            "agent",
+            "apply",
+            "owner/repo#7",
+            "--workspace",
+            str(tmp_path),
+            "--timeout",
+            "1",
+            "--",
+            sys.executable,
+            "-c",
+            f"import time, sys; print('{secret}', flush=True); time.sleep(5)",
+        ],
+    )
+
+    assert result.exit_code == 1
+    metadata = json.loads(paths.agent_apply_json.read_text(encoding="utf-8"))
+    output = paths.agent_output_log.read_text(encoding="utf-8")
+    assert metadata["status"] == "timeout"
+    assert metadata["exit_code"] is None
+    assert metadata["redaction_applied"] is True
+    assert secret not in output
+    assert "[REDACTED]" in output
+
+
 def test_pr_draft_includes_agent_apply_diff_summary(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     write_valid_pack(tmp_path)
@@ -215,6 +289,26 @@ def test_agent_apply_rejects_obvious_remote_write_commands(tmp_path: Path) -> No
     assert "Refusing" in direct.output
     assert shell.exit_code == 1
     assert "shell wrapper" in shell.output
+
+
+def test_agent_apply_rejects_git_global_option_remote_writes(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+
+    push = runner.invoke(app, ["agent", "apply", "owner/repo#7", "--workspace", str(tmp_path), "--", "git", "-C", ".", "push"])
+    commit = runner.invoke(app, ["agent", "apply", "owner/repo#7", "--workspace", str(tmp_path), "--", "git", "-c", "user.name=x", "commit", "-m", "x"])
+    gh_api = runner.invoke(app, ["agent", "apply", "owner/repo#7", "--workspace", str(tmp_path), "--", "gh", "api", "repos/owner/repo/issues/7/comments"])
+
+    assert push.exit_code == 1
+    assert "Refusing" in push.output
+    assert commit.exit_code == 1
+    assert "Refusing" in commit.output
+    assert gh_api.exit_code == 1
+    assert "Refusing" in gh_api.output
+    assert not paths.agent_apply_json.exists()
 
 
 def test_agent_apply_records_untracked_files_in_diffstat(tmp_path: Path) -> None:

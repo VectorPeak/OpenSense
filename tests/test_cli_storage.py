@@ -487,7 +487,7 @@ def test_issue_inspects_one_candidate(monkeypatch, tmp_path: Path) -> None:
     )
 
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
-    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
 
     result = runner.invoke(app, ["issue", "owner/repo#7", "--workspace", str(tmp_path)])
 
@@ -508,7 +508,7 @@ def test_issue_plan_can_run_without_llm(monkeypatch, tmp_path: Path) -> None:
     )
 
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
-    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [issue])
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
 
     result = runner.invoke(app, ["issue", "owner/repo#8", "--plan", "--no-llm", "--workspace", str(tmp_path)])
 
@@ -537,14 +537,42 @@ def test_issue_rejects_non_positive_issue_number(tmp_path: Path) -> None:
     assert "greater than zero" in result.output
 
 
-def test_issue_reports_when_recent_open_issue_is_not_found(monkeypatch, tmp_path: Path) -> None:
+def test_issue_fetches_direct_issue_even_when_not_in_recent_open_list(monkeypatch, tmp_path: Path) -> None:
+    issue = Issue(
+        owner="owner",
+        repo="repo",
+        number=99,
+        title="Older but still open issue",
+        labels=("bug",),
+        comments=0,
+        repository_stars=1200,
+    )
+    called = {"list": False}
+
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
-    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: [])
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
+    monkeypatch.setattr("opensense.cli.fetch_open_issues", lambda client, repo, limit: called.__setitem__("list", True) or [])
 
     result = runner.invoke(app, ["issue", "owner/repo#99", "--workspace", str(tmp_path)])
 
-    assert result.exit_code != 0
-    assert "was not found in the latest open issues" in result.output
+    assert result.exit_code == 0, result.output
+    assert "owner/repo#99" in result.output
+    assert called["list"] is False
+
+
+def test_issue_reports_direct_fetch_errors_without_traceback(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+
+    def fail_fetch(client, repo: str, number: int):
+        raise ValueError("Reference points to a pull request, not an issue.")
+
+    monkeypatch.setattr("opensense.cli.fetch_issue", fail_fetch)
+
+    result = runner.invoke(app, ["issue", "owner/repo#99", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "Reference points to a pull request" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_repo_splits_skills_and_displays_radar(monkeypatch, tmp_path: Path) -> None:
