@@ -368,6 +368,22 @@ opensense attempt open https://github.com/vllm-project/vllm/issues/12345
 
 这一整条链路默认都不 commit、不 push、不打开 PR、不评论 GitHub。OpenSense 负责把上下文、执行记录和 PR 草稿准备好，真正是否开 PR 仍由你人工判断。
 
+### Agent / Skill 用法
+
+OpenSense 很适合被打包成 Agent Skill：Skill 不需要重新实现 GitHub 搜索或打分逻辑，只需要把这条安全流程固定下来。
+
+```text
+daily -> issue --plan -> pack -> patch --dry-run -> propose
+      -> sandbox create -> agent handoff -> agent apply
+      -> test run -> pr draft -> agent status
+```
+
+建议 Skill 遵守三条边界：
+
+- 先用 `daily` 和 `issue --plan` 做判断，再进入本地 PR 尝试。
+- `agent apply` 只在 OpenSense 创建的 sandbox worktree 里执行。
+- `pr draft` 只生成本地草稿，不自动 commit、push、开 PR 或评论 GitHub。
+
 For agent clients, OpenSense also provides a read-only MCP entrypoint:
 
 ```bash
