@@ -286,3 +286,34 @@ def test_pr_draft_rejects_missing_sandbox_worktree(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Sandbox worktree no longer exists" in result.output
+
+
+def test_test_run_detects_indirect_commit_and_pr_draft_downgrades(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "test",
+            "run",
+            "owner/repo#7",
+            "--workspace",
+            str(tmp_path),
+            "--",
+            sys.executable,
+            "-c",
+            "from pathlib import Path; import subprocess; Path('README.md').write_text('# Demo\\n\\nCommitted by test.\\n', encoding='utf-8'); subprocess.run(['git','add','README.md'], check=True); subprocess.run(['git','commit','-m','test commit'], check=True)",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    run = json.loads((root / "test-run.json").read_text(encoding="utf-8"))
+    assert run["git_commit_performed"] is True
+
+    draft_result = runner.invoke(app, ["pr", "draft", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert draft_result.exit_code == 0, draft_result.output
+    draft = (root / "pr-draft.md").read_text(encoding="utf-8")
+    assert "Status: not_verified" in draft

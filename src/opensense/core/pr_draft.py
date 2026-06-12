@@ -71,6 +71,7 @@ def load_test_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, Any]:
         and data.get("issue_ref") == issue_ref.ref
         and status in {"passed", "failed", "timeout"}
         and isinstance(command, list)
+        and data.get("git_commit_performed") is False
     )
     if status == "passed" and (exit_code != 0 or not command):
         valid = False
@@ -104,6 +105,63 @@ def load_test_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, Any]:
     }
 
 
+def load_agent_apply_state(paths, issue_ref: IssueRef, cwd: Path) -> dict[str, Any]:
+    if not paths.agent_apply_json.exists():
+        return {
+            "status": "not_run",
+            "exit_code": None,
+            "command": [],
+            "modified_files": [],
+            "diffstat": "",
+            "message": "Agent apply has not been run yet.",
+        }
+    data = json.loads(paths.agent_apply_json.read_text(encoding="utf-8"))
+    status = str(data.get("status") or "unknown")
+    exit_code = data.get("exit_code")
+    command = data.get("command") or []
+    modified_files = data.get("modified_files") or []
+    valid = (
+        data.get("kind") == "opensense.agent_apply"
+        and data.get("issue_ref") == issue_ref.ref
+        and str(data.get("cwd") or "") == str(cwd)
+        and status in {"passed", "failed", "timeout"}
+        and isinstance(command, list)
+        and isinstance(modified_files, list)
+        and data.get("git_commit_performed") is False
+    )
+    if status == "passed" and (exit_code != 0 or not command):
+        valid = False
+    current_commit = git_output(cwd, ["rev-parse", "HEAD"])
+    current_dirty = git_output(cwd, ["status", "--porcelain"])
+    stale = valid and (str(data.get("dirty_status") or "") != current_dirty or str(data.get("git_commit") or "") != current_commit)
+    if not valid:
+        return {
+            "status": "not_verified",
+            "exit_code": None,
+            "command": [],
+            "modified_files": [],
+            "diffstat": "",
+            "message": "Stored agent-apply.json is invalid or inconsistent, so this draft does not treat it as applied.",
+        }
+    if stale:
+        return {
+            "status": "stale",
+            "exit_code": exit_code,
+            "command": command,
+            "modified_files": modified_files,
+            "diffstat": paths.diffstat_txt.read_text(encoding="utf-8") if paths.diffstat_txt.exists() else "",
+            "message": "The sandbox changed after agent apply; rerun agent apply or refresh the draft evidence.",
+        }
+    return {
+        "status": status,
+        "exit_code": exit_code,
+        "command": command,
+        "modified_files": modified_files,
+        "diffstat": paths.diffstat_txt.read_text(encoding="utf-8") if paths.diffstat_txt.exists() else "",
+        "message": "",
+    }
+
+
 def test_section(test_state: dict[str, Any]) -> list[str]:
     status = test_state["status"]
     lines = [
@@ -124,10 +182,30 @@ def test_section(test_state: dict[str, Any]) -> list[str]:
     return lines
 
 
-def draft_markdown(pack: dict[str, Any], issue_ref: IssueRef, test_state: dict[str, Any], diffstat: str) -> str:
+def agent_section(agent_state: dict[str, Any]) -> list[str]:
+    status = agent_state["status"]
+    lines = [
+        "## Agent Apply",
+        "",
+        f"- Status: {status}",
+        f"- Exit code: {agent_state['exit_code']}",
+    ]
+    command = agent_state.get("command") or []
+    if command:
+        lines.append(f"- Command: `{format_command(command)}`")
+    modified_files = agent_state.get("modified_files") or []
+    if modified_files:
+        lines.extend(["- Modified files:", *(f"  - `{item}`" for item in modified_files)])
+    if agent_state.get("message"):
+        lines.append(f"- {agent_state['message']}")
+    return lines
+
+
+def draft_markdown(pack: dict[str, Any], issue_ref: IssueRef, test_state: dict[str, Any], agent_state: dict[str, Any], diffstat: str) -> str:
     issue = pack.get("issue", {})
     title = issue.get("title") or issue_ref.ref
-    changes = ["- Patch not applied yet."] if not diffstat else [f"- Current local diff:\n\n```text\n{diffstat}\n```"]
+    effective_diffstat = str(agent_state.get("diffstat") or diffstat)
+    changes = ["- Patch not applied yet."] if not effective_diffstat else [f"- Current local diff:\n\n```text\n{effective_diffstat}\n```"]
     lines = [
         f"# {title}",
         "",
@@ -142,6 +220,8 @@ def draft_markdown(pack: dict[str, Any], issue_ref: IssueRef, test_state: dict[s
         "",
         *changes,
         "",
+        *agent_section(agent_state),
+        "",
         *test_section(test_state),
         "",
         "## Risks / Not Verified",
@@ -152,7 +232,8 @@ def draft_markdown(pack: dict[str, Any], issue_ref: IssueRef, test_state: dict[s
         "## Safety",
         "",
         "- This command only wrote local draft files.",
-        "- No commit, push, GitHub comment, or PR creation was performed.",
+        "- The PR draft command did not commit, push, create a PR, or comment on GitHub.",
+        "- Review agent/test metadata before making claims in a real PR.",
     ]
     return "\n".join(lines)
 
@@ -165,6 +246,7 @@ def generate_pr_draft(issue_ref: IssueRef, workspace: Path | None = None, *, for
     cwd = draft_workspace(issue_ref, root)
     diffstat = git_output(cwd, ["diff", "--stat"])
     test_state = load_test_state(paths, issue_ref, cwd)
+    agent_state = load_agent_apply_state(paths, issue_ref, cwd)
     metadata: dict[str, object] = {
         "schema_version": 1,
         "kind": "opensense.pr_draft",
@@ -173,12 +255,14 @@ def generate_pr_draft(issue_ref: IssueRef, workspace: Path | None = None, *, for
         "cwd": str(cwd),
         "test_status": test_state["status"],
         "test_exit_code": test_state["exit_code"],
+        "agent_apply_status": agent_state["status"],
+        "agent_apply_exit_code": agent_state["exit_code"],
         "has_local_diff": bool(diffstat),
         "git_commit_performed": False,
         "git_push_performed": False,
         "github_write_performed": False,
     }
-    markdown = draft_markdown(payload["pack"], issue_ref, test_state, diffstat)
+    markdown = draft_markdown(payload["pack"], issue_ref, test_state, agent_state, diffstat)
     paths.root.mkdir(parents=True, exist_ok=True)
     paths.pr_draft_json.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     paths.pr_draft_md.write_text(markdown.rstrip() + "\n", encoding="utf-8", newline="\n")

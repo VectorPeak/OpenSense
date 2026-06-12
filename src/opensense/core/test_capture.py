@@ -5,25 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
-import os
 import re
-import shlex
 import subprocess
 import time
 from pathlib import Path
 
 from opensense.config import workspace_path
+from opensense.core.command_safety import format_command, validate_no_obvious_remote_write
 from opensense.core.issue_ref import IssueRef
 from opensense.core.sandbox import load_sandbox
 from opensense.storage.packs import ensure_pack_can_write, pack_paths, require_valid_pack
 
-
-DANGEROUS_COMMAND_PREFIXES = (
-    ("git", "push"),
-    ("gh", "pr", "create"),
-    ("gh", "issue", "comment"),
-    ("gh", "pr", "comment"),
-)
 
 REDACTION_PATTERNS = (
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
@@ -55,12 +47,7 @@ def redact_text(value: str) -> str:
 
 
 def validate_command(command: tuple[str, ...]) -> None:
-    if not command:
-        raise ValueError("Test command is required.")
-    lowered = tuple(part.lower() for part in command[:3])
-    for prefix in DANGEROUS_COMMAND_PREFIXES:
-        if lowered[: len(prefix)] == prefix:
-            raise ValueError("Refusing to run commands that write to GitHub or push to a remote.")
+    validate_no_obvious_remote_write(command, label="Test")
 
 
 def command_cwd(issue_ref: IssueRef, workspace: Path) -> Path:
@@ -79,13 +66,6 @@ def git_output(cwd: Path, args: list[str]) -> str:
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
-
-
-def format_command(command: object) -> str:
-    parts = [str(part) for part in command] if isinstance(command, (list, tuple)) else [str(command)]
-    if os.name == "nt":
-        return subprocess.list2cmdline(parts)
-    return shlex.join(parts)
 
 
 def build_evidence(metadata: dict[str, object]) -> str:
@@ -127,6 +107,7 @@ def capture_test_run(
     require_valid_pack(paths, issue_ref.ref)
     ensure_pack_can_write(paths, ("test-run.json", "test-output.log", "test-run.md"), force=force)
     cwd = command_cwd(issue_ref, root)
+    before_commit = git_output(cwd, ["rev-parse", "HEAD"])
     started_at = utc_now()
     started = time.monotonic()
     exit_code: int | None
@@ -144,6 +125,8 @@ def capture_test_run(
     finished_at = utc_now()
     duration = round(time.monotonic() - started, 3)
     dirty_status = git_output(cwd, ["status", "--porcelain"])
+    after_commit = git_output(cwd, ["rev-parse", "HEAD"])
+    commit_performed = bool(before_commit and after_commit and before_commit != after_commit)
     metadata: dict[str, object] = {
         "schema_version": 1,
         "kind": "opensense.test_run",
@@ -158,10 +141,11 @@ def capture_test_run(
         "stdout_log": "test-output.log",
         "output_truncated": False,
         "redaction_applied": output != raw_output,
-        "git_commit": git_output(cwd, ["rev-parse", "HEAD"]),
+        "base_commit": before_commit,
+        "git_commit": after_commit,
         "dirty_status": dirty_status,
         "source_modified": bool(dirty_status),
-        "git_commit_performed": False,
+        "git_commit_performed": commit_performed,
         "git_push_performed": "not_asserted",
         "github_write_performed": "not_asserted",
     }

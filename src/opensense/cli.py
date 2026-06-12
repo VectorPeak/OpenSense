@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from opensense.config import OpenSenseConfig, initialize_state, load_config, validate_env_var_name
+from opensense.core.agent_workflow import generate_agent_apply, generate_agent_handoff
 from opensense.core.daily import generate_daily_analysis
 from opensense.core.evidence import generate_evidence
 from opensense.core.issue_ref import parse_issue_reference
@@ -38,12 +39,14 @@ watch_skill_app = typer.Typer(help="Manage watched skills.")
 sandbox_app = typer.Typer(help="Manage isolated local worktrees for issue attempts.")
 test_app = typer.Typer(help="Capture local test evidence for issue attempts.")
 pr_app = typer.Typer(help="Generate local pull request drafts.")
+agent_app = typer.Typer(help="Prepare and run controlled coding-agent attempts.")
 app.add_typer(watch_app, name="watch")
 watch_app.add_typer(watch_repo_app, name="repo")
 watch_app.add_typer(watch_skill_app, name="skill")
 app.add_typer(sandbox_app, name="sandbox")
 app.add_typer(test_app, name="test")
 app.add_typer(pr_app, name="pr")
+app.add_typer(agent_app, name="agent")
 console = Console()
 
 # Keep the product surface deliberately small. The CLI exposes five top-level
@@ -496,6 +499,55 @@ def sandbox_status(issue: str, workspace: Optional[Path] = workspace_option()) -
     table.add_row("dirty_policy", info.dirty_policy)
     table.add_row("safety_status", info.safety_status)
     console.print(table)
+
+
+@agent_app.command("handoff")
+def agent_handoff(
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing agent handoff."),
+) -> None:
+    """Write a local task brief for an external coding agent."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        result = generate_agent_handoff(issue_ref, workspace, force=force)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileExistsError, FileNotFoundError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Agent handoff written to {result.root}")
+    for path in result.written_files:
+        console.print(f"- {path.name}")
+
+
+@agent_app.command("apply", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def agent_apply(
+    ctx: typer.Context,
+    issue: str,
+    workspace: Optional[Path] = workspace_option(),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing agent apply artifacts."),
+    timeout: int = typer.Option(1800, "--timeout", min=1, help="Maximum command runtime in seconds."),
+) -> None:
+    """Run one explicit agent command inside the issue sandbox and capture diff evidence."""
+
+    try:
+        issue_ref = parse_issue_reference(issue)
+        result = generate_agent_apply(issue_ref, tuple(ctx.args), workspace, force=force, timeout=timeout)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except (FileExistsError, FileNotFoundError, RuntimeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    console.print(f"Agent apply artifacts written to {result.root}")
+    for path in result.written_files:
+        console.print(f"- {path.name}")
+    console.print(f"Status: {result.status}")
+    if result.status != "passed":
+        raise typer.Exit(1)
 
 
 @test_app.command("run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

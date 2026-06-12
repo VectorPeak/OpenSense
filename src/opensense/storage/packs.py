@@ -33,6 +33,12 @@ class PackPaths:
     test_output_log: Path
     pr_draft_json: Path
     pr_draft_md: Path
+    agent_handoff_json: Path
+    agent_handoff_md: Path
+    agent_apply_json: Path
+    agent_output_log: Path
+    diff_patch: Path
+    diffstat_txt: Path
 
 
 PACK_FILENAMES = (
@@ -82,6 +88,12 @@ def pack_paths(issue_ref: IssueRef, workspace: Path | None = None) -> PackPaths:
         test_output_log=root / "test-output.log",
         pr_draft_json=root / "pr-draft.json",
         pr_draft_md=root / "pr-draft.md",
+        agent_handoff_json=root / "agent-handoff.json",
+        agent_handoff_md=root / "agent-handoff.md",
+        agent_apply_json=root / "agent-apply.json",
+        agent_output_log=root / "agent-output.log",
+        diff_patch=root / "diff.patch",
+        diffstat_txt=root / "diffstat.txt",
     )
 
 
