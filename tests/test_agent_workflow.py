@@ -311,6 +311,30 @@ def test_agent_apply_rejects_git_global_option_remote_writes(tmp_path: Path) -> 
     assert not paths.agent_apply_json.exists()
 
 
+def test_agent_apply_rejects_common_gh_write_verbs(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+
+    commands = [
+        ["gh", "issue", "edit", "owner/repo#7", "--add-label", "bug"],
+        ["gh", "issue", "close", "owner/repo#7"],
+        ["gh", "pr", "merge", "123"],
+        ["gh", "release", "create", "v1.0.0"],
+        ["gh", "workflow", "run", "ci.yml"],
+        ["gh", "--repo", "owner/repo", "issue", "edit", "7", "--add-label", "bug"],
+    ]
+
+    for command in commands:
+        result = runner.invoke(app, ["agent", "apply", "owner/repo#7", "--workspace", str(tmp_path), "--", *command])
+
+        assert result.exit_code == 1, command
+        assert "Refusing" in result.output
+    assert not paths.agent_apply_json.exists()
+
+
 def test_agent_apply_records_untracked_files_in_diffstat(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     write_valid_pack(tmp_path)

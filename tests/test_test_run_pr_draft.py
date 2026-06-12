@@ -348,6 +348,25 @@ def test_pr_draft_rejects_missing_sandbox_worktree(tmp_path: Path) -> None:
     assert "Sandbox worktree no longer exists" in result.output
 
 
+def test_pr_draft_rejects_sandbox_json_pointing_outside_sandbox_root(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    assert runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    assert runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    outside = tmp_path / "outside-pr-draft-cwd"
+    outside.mkdir()
+    sandbox = json.loads((root / "sandbox.json").read_text(encoding="utf-8"))
+    sandbox["real_worktree_path"] = str(outside)
+    (root / "sandbox.json").write_text(json.dumps(sandbox), encoding="utf-8")
+
+    result = runner.invoke(app, ["pr", "draft", "owner/repo#7", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "must stay inside" in result.output
+    assert not (root / "pr-draft.json").exists()
+
+
 def test_test_run_detects_indirect_commit_and_pr_draft_downgrades(tmp_path: Path) -> None:
     init_git_repo(tmp_path)
     write_valid_pack(tmp_path)
@@ -399,6 +418,21 @@ def test_test_run_rejects_sandbox_json_pointing_outside_sandbox_root(tmp_path: P
     assert result.exit_code == 1
     assert "must stay inside" in result.output
     assert not (root / "test-run.json").exists()
+
+
+def test_test_run_rejects_remote_write_commands_with_git_options_and_gh(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    write_valid_pack(tmp_path)
+    paths = pack_paths(parse_issue_reference("owner/repo#7"), tmp_path)
+
+    push = runner.invoke(app, ["test", "run", "owner/repo#7", "--workspace", str(tmp_path), "--", "git", "-C", ".", "push"])
+    gh_api = runner.invoke(app, ["test", "run", "owner/repo#7", "--workspace", str(tmp_path), "--", "gh", "api", "repos/owner/repo/issues/7/comments"])
+
+    assert push.exit_code == 1
+    assert "Refusing" in push.output
+    assert gh_api.exit_code == 1
+    assert "Refusing" in gh_api.output
+    assert not paths.test_run_json.exists()
 
 
 def test_pr_draft_downgrades_test_run_from_different_cwd(tmp_path: Path) -> None:

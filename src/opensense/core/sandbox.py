@@ -72,14 +72,32 @@ def dirty_snapshot(workspace: Path) -> str:
     return git_output(workspace, ["status", "--porcelain"]) or ""
 
 
+def usable_git_workspace(workspace: Path) -> bool:
+    top_level_text = git_output(workspace, ["rev-parse", "--show-toplevel"])
+    if not top_level_text:
+        return False
+    top_level = Path(top_level_text).resolve()
+    resolved = workspace.resolve()
+    if resolved == top_level:
+        return True
+    try:
+        relative = resolved.relative_to(top_level)
+    except ValueError:
+        return False
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", relative.as_posix()],
+        cwd=top_level,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return bool(tracked.stdout.strip())
+
+
 def git_state_in_progress(workspace: Path) -> str | None:
-    top_level = git_output(workspace, ["rev-parse", "--show-toplevel"])
-    if not top_level or Path(top_level).resolve() != workspace.resolve():
+    if not usable_git_workspace(workspace):
         return "git metadata unavailable"
-    git_dir_text = git_output(workspace, ["rev-parse", "--git-dir"])
-    if not git_dir_text:
-        return "git metadata unavailable"
-    git_dir = (workspace / git_dir_text).resolve()
     markers = {
         "MERGE_HEAD": "merge in progress",
         "CHERRY_PICK_HEAD": "cherry-pick in progress",
@@ -88,7 +106,8 @@ def git_state_in_progress(workspace: Path) -> str | None:
         "rebase-apply": "rebase in progress",
     }
     for marker, message in markers.items():
-        if (git_dir / marker).exists():
+        marker_path = git_output(workspace, ["rev-parse", "--git-path", marker])
+        if marker_path and (workspace / marker_path).resolve().exists():
             return message
     return None
 

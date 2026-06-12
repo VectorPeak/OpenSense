@@ -1,5 +1,6 @@
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -187,10 +188,29 @@ def test_sandbox_create_rejects_merge_in_progress(tmp_path: Path) -> None:
 
 
 def test_sandbox_create_reports_non_git_workspace_before_dirty_message(tmp_path: Path) -> None:
-    write_valid_pack(tmp_path)
+    with tempfile.TemporaryDirectory() as raw:
+        workspace = Path(raw)
+        write_valid_pack(workspace)
 
-    result = runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(tmp_path)])
+        result = runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(workspace)])
 
     assert result.exit_code == 1
     assert "git metadata unavailable" in result.output
     assert "uncommitted changes" not in result.output
+
+
+def test_sandbox_create_allows_workspace_inside_git_repo_subdirectory(tmp_path: Path) -> None:
+    init_git_repo(tmp_path)
+    subdir = tmp_path / "examples"
+    subdir.mkdir()
+    (subdir / "README.md").write_text("# Example\n", encoding="utf-8")
+    git(tmp_path, "add", "examples/README.md")
+    assert git(tmp_path, "commit", "-m", "add examples").returncode == 0
+    write_valid_pack(subdir)
+
+    result = runner.invoke(app, ["sandbox", "create", "owner/repo#7", "--workspace", str(subdir)])
+
+    assert result.exit_code == 0, result.output
+    sandbox = json.loads((subdir / ".opensense" / "packs" / "owner__repo" / "7" / "sandbox.json").read_text(encoding="utf-8"))
+    assert Path(sandbox["real_worktree_path"]).exists()
+    assert str(Path(sandbox["real_worktree_path"]).resolve()).startswith(str((subdir / ".opensense" / "sandboxes").resolve()))

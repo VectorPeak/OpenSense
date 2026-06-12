@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -11,6 +12,10 @@ from typing import Any
 
 
 API_ROOT = "https://api.github.com"
+
+
+class GitHubClientError(RuntimeError):
+    """User-facing GitHub API error."""
 
 
 @dataclass(frozen=True)
@@ -35,5 +40,14 @@ class GitHubClient:
         if self.token:
             request.add_header("Authorization", f"Bearer {self.token}")
 
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise GitHubClientError(f"GitHub API request failed with HTTP {exc.code}: {exc.reason}") from exc
+        except urllib.error.URLError as exc:
+            raise GitHubClientError(f"GitHub API request failed: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise GitHubClientError("GitHub API request timed out.") from exc
+        except json.JSONDecodeError as exc:
+            raise GitHubClientError("GitHub API returned invalid JSON.") from exc

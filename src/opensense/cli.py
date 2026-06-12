@@ -27,7 +27,7 @@ from opensense.core.sandbox import create_sandbox, load_sandbox
 from opensense.core.scoring import score_issue
 from opensense.core.test_capture import capture_test_run
 from opensense.doctor import has_errors, run_checks
-from opensense.github.client import GitHubClient
+from opensense.github.client import GitHubClient, GitHubClientError
 from opensense.github.issues import fetch_issue, fetch_open_issues
 from opensense.github.radar import fetch_radar
 from opensense.llm.client import config_from_env
@@ -210,10 +210,14 @@ def find_open_issue(workspace: Optional[Path], issue_ref: str):
     repo, number = parse_issue_ref(issue_ref)
     client = github_client_for_workspace(workspace)
     try:
-        return fetch_issue(client, repo, number)
-    except ValueError as exc:
+        issue = fetch_issue(client, repo, number)
+    except (GitHubClientError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+    if issue.state.lower() != "open":
+        typer.echo(f"{issue.ref} is {issue.state}; OpenSense issue review only accepts open issues.", err=True)
+        raise typer.Exit(1)
+    return issue
 
 
 def fetch_one_issue(workspace: Optional[Path], issue_text: str):
@@ -224,7 +228,7 @@ def fetch_one_issue(workspace: Optional[Path], issue_text: str):
     client = github_client_for_workspace(workspace)
     try:
         issue = fetch_issue(client, issue_ref.repository, issue_ref.number)
-    except ValueError as exc:
+    except (GitHubClientError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     return issue_ref, issue

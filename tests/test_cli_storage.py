@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from opensense.cli import app
 from opensense.config import DEFAULT_REPOSITORIES, DEFAULT_SKILLS
+from opensense.github.client import GitHubClientError
 from opensense.models import Issue, RadarResult
 
 
@@ -572,6 +573,42 @@ def test_issue_reports_direct_fetch_errors_without_traceback(monkeypatch, tmp_pa
 
     assert result.exit_code == 1
     assert "Reference points to a pull request" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_issue_rejects_closed_issue_after_direct_fetch(monkeypatch, tmp_path: Path) -> None:
+    closed = Issue(
+        owner="owner",
+        repo="repo",
+        number=100,
+        title="Already fixed",
+        labels=("bug",),
+        comments=0,
+        repository_stars=1200,
+        state="closed",
+    )
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: closed)
+
+    result = runner.invoke(app, ["issue", "owner/repo#100", "--plan", "--no-llm", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "is closed" in result.output
+    assert "PR Plan" not in result.output
+
+
+def test_issue_reports_github_client_errors_without_traceback(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+
+    def fail_fetch(client, repo: str, number: int):
+        raise GitHubClientError("GitHub API request failed with HTTP 404: Not Found")
+
+    monkeypatch.setattr("opensense.cli.fetch_issue", fail_fetch)
+
+    result = runner.invoke(app, ["issue", "owner/repo#404", "--workspace", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "HTTP 404" in result.output
     assert "Traceback" not in result.output
 
 

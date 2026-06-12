@@ -13,7 +13,7 @@ from typing import Any
 
 from opensense.config import workspace_path
 from opensense.core.issue_ref import IssueRef
-from opensense.core.sandbox import load_sandbox
+from opensense.core.sandbox import load_sandbox, sandbox_root
 from opensense.storage.packs import ensure_pack_can_write, pack_paths, require_valid_pack
 
 
@@ -36,6 +36,10 @@ def draft_workspace(issue_ref: IssueRef, workspace: Path) -> Path:
     path = Path(sandbox.real_worktree_path).resolve()
     if not path.exists():
         raise FileNotFoundError("Sandbox worktree no longer exists. Recreate it or remove sandbox.json.")
+    try:
+        path.relative_to(sandbox_root(issue_ref, workspace).resolve())
+    except ValueError as exc:
+        raise ValueError("Sandbox worktree must stay inside the OpenSense sandbox root.") from exc
     return path
 
 
