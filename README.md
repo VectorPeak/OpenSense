@@ -215,6 +215,53 @@ vllm-project/vllm 82     Go       external contributors are getting merged; lang
   pr-draft.md
 ```
 
+## 从 0 到 1 跑通
+
+如果只是想先确认 OpenSense 能不能工作，可以从一个空目录开始：
+
+```bash
+mkdir opensense-demo
+cd opensense-demo
+
+pip install opensense-vp
+opensense init
+opensense init --check
+opensense watch repo list
+opensense watch skill list
+opensense daily --no-llm --limit 5
+```
+
+这一步会验证安装、配置、默认 watchlist、GitHub issue 拉取和规则排序。它不要求你已经 clone 目标项目，也不会修改任何开源仓库。
+
+选中一个 issue 后，可以继续生成只读上下文和 PR 前计划：
+
+```bash
+opensense issue owner/repo#123 --plan --no-llm
+opensense pack https://github.com/owner/repo/issues/123
+opensense patch https://github.com/owner/repo/issues/123 --dry-run
+opensense propose https://github.com/owner/repo/issues/123
+```
+
+如果要进入真正的本地 PR 尝试，需要切到目标项目的 git 工作区里执行后续命令：
+
+```bash
+git clone https://github.com/owner/repo.git
+cd repo
+
+opensense init
+opensense pack https://github.com/owner/repo/issues/123
+opensense patch https://github.com/owner/repo/issues/123 --dry-run
+opensense propose https://github.com/owner/repo/issues/123
+opensense sandbox create https://github.com/owner/repo/issues/123
+opensense agent handoff https://github.com/owner/repo/issues/123
+opensense agent apply https://github.com/owner/repo/issues/123 -- <agent command>
+opensense test run https://github.com/owner/repo/issues/123 -- <test command>
+opensense pr draft https://github.com/owner/repo/issues/123
+opensense agent status https://github.com/owner/repo/issues/123
+```
+
+`sandbox create` 会创建隔离 worktree；`agent apply` 和 `test run` 都只在这个 sandbox 里运行。最后生成的是本地 `pr-draft.md`，OpenSense 不会替你 commit、push、开 PR 或评论 issue。
+
 ## 核心流程
 
 当前 MVP 是一个轻量 CLI。需要网络的命令优先使用 GitHub API 和确定性规则；LLM 只作为可选增强。
@@ -556,6 +603,15 @@ opensense --help
 ### 默认 watchlist 可以修改吗？
 
 可以。`opensense init` 会提供一份 Agent / RAG 默认列表，你可以使用 `watch repo add` 和 `watch skill add` 继续扩展。普通重复执行 `init` 不会覆盖已有列表，`init --force` 会恢复默认配置。
+
+### 做过从 0 到 1 的端到端测试吗？
+
+做过两类验证：
+
+- 本地回归测试覆盖了 `init`、watchlist、`daily`、`issue`、`pack`、`patch --dry-run`、`propose`、`sandbox create`、`agent handoff`、`agent apply`、`test run`、`pr draft`、`agent status` 和只读 MCP 入口。
+- 真实 GitHub 项目上验证过 issue 发现、单 issue 分析、上下文包、dry-run、sandbox 和 agent handoff 链路。例如曾用约 500+ stars 的 `NVIDIA-AI-Blueprints/rag` 做过实测，能够走到本地 PR 尝试准备阶段。
+
+当前项目刻意不自动创建远端 PR，所以“端到端”到本地 `pr-draft.md` 为止。真正提交 PR 前，仍建议人工检查 diff、测试日志和维护者语境。
 
 ## 许可证
 
