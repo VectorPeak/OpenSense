@@ -453,7 +453,7 @@ OpenSense 不会只因为一个 issue 带着 `good first issue` 标签，就把�
 
 ## MVP 范围
 
-OpenSense v1 聚焦开源贡献的筛选和规划。
+OpenSense v1 聚焦开源贡献的筛选、规划和本地 PR 尝试准备。
 
 当前已经支持：
 
@@ -468,7 +468,7 @@ OpenSense v1 聚焦开源贡献的筛选和规划。
 
 当前默认不会：
 
-- 修改主工作区源码
+- 修改主工作区源码；只有用户显式进入 sandbox 后，才允许在隔离 worktree 内捕获 diff
 - commit / push
 - 评论 issue / PR
 - 创建 GitHub PR
@@ -483,7 +483,7 @@ OpenSense v1 聚焦开源贡献的筛选和规划。
 
 仍然禁止：
 
-- obvious `git push` / `git commit` / `gh pr create` / `gh issue comment`
+- 明显的远端写操作：`git push` / `git commit` / `gh pr create` / `gh issue comment`
 - shell wrapper 形式的 agent apply
 - 泄露 secret-like 文本
 - 把未验证证据写成已验证事实
