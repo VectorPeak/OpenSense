@@ -58,11 +58,13 @@ def test_pack_paths_are_stable(tmp_path: Path) -> None:
     paths = pack_paths(issue_ref, tmp_path)
 
     assert paths.root == tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
-    assert paths.issue_md == paths.root / "issue.md"
-    assert paths.agent_md == paths.root / "agent.md"
+    assert paths.index_md == paths.root / "index.md"
+    assert paths.docs_dir == paths.root / "md_docs"
+    assert paths.issue_md == paths.docs_dir / "issue.md"
+    assert paths.agent_md == paths.docs_dir / "agent.md"
     assert paths.pr_summary_md == paths.root / "pr-summary.md"
-    assert paths.pack_json == paths.root / "pack.json"
-    assert paths.manifest_json == paths.root / "manifest.json"
+    assert paths.pack_json == paths.docs_dir / "pack.json"
+    assert paths.manifest_json == paths.docs_dir / "manifest.json"
 
 
 def test_pack_writes_read_only_context_files(monkeypatch, tmp_path: Path) -> None:
@@ -76,12 +78,15 @@ def test_pack_writes_read_only_context_files(monkeypatch, tmp_path: Path) -> Non
 
     assert result.exit_code == 0, result.output
     root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    docs = root / "md_docs"
     expected = {"issue.md", "repo.md", "files.md", "tests.md", "plan.md", "risks.md", "agent.md", "pack.json", "manifest.json"}
-    assert expected == {path.name for path in root.iterdir()}
-    assert "Fix agent retrieval bug" in (root / "issue.md").read_text(encoding="utf-8")
-    assert "untrusted user-supplied text" in (root / "issue.md").read_text(encoding="utf-8")
-    assert "Do not open a PR, push, commit, or comment" in (root / "agent.md").read_text(encoding="utf-8")
-    assert "Not run." in (root / "tests.md").read_text(encoding="utf-8")
+    assert (root / "index.md").exists()
+    assert expected == {path.name for path in docs.iterdir()}
+    assert "md_docs/issue.md" in (root / "index.md").read_text(encoding="utf-8")
+    assert "Fix agent retrieval bug" in (docs / "issue.md").read_text(encoding="utf-8")
+    assert "untrusted user-supplied text" in (docs / "issue.md").read_text(encoding="utf-8")
+    assert "Do not open a PR, push, commit, or comment" in (docs / "agent.md").read_text(encoding="utf-8")
+    assert "Not run." in (docs / "tests.md").read_text(encoding="utf-8")
     assert source_file.read_text(encoding="utf-8") == "print('unchanged')\n"
 
 
@@ -98,8 +103,9 @@ def test_pack_writes_structured_json_and_manifest(monkeypatch, tmp_path: Path) -
 
     assert result.exit_code == 0, result.output
     root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
-    pack = json.loads((root / "pack.json").read_text(encoding="utf-8"))
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    docs = root / "md_docs"
+    pack = json.loads((docs / "pack.json").read_text(encoding="utf-8"))
+    manifest = json.loads((docs / "manifest.json").read_text(encoding="utf-8"))
     assert pack["schema_version"] == 1
     assert pack["issue"]["ref"] == "owner/repo#7"
     assert pack["facts"]["repo_context"]["present_files"] == ["README.md", "pyproject.toml"]
@@ -109,6 +115,7 @@ def test_pack_writes_structured_json_and_manifest(monkeypatch, tmp_path: Path) -
     assert "uv run pytest" in pack["test_guidance"]["suggested_commands"]
     assert manifest["issue_ref"] == "owner/repo#7"
     assert manifest["kind"] == "opensense.pack_manifest"
+    assert manifest["language"] == "en"
     assert manifest["pack_id"] == "owner__repo/7"
     assert manifest["issue_url"] == "https://github.com/owner/repo/issues/7"
     assert manifest["safety"]["source_modified"] is False
@@ -116,7 +123,24 @@ def test_pack_writes_structured_json_and_manifest(monkeypatch, tmp_path: Path) -
     assert manifest["secret_scan"]["status"] == "passed"
     assert ".env" in manifest["secret_scan"]["skipped_sensitive_paths"]
     assert ".opensense/" in manifest["secret_scan"]["skipped_sensitive_paths"]
-    assert "manifest.json" in manifest["generated_files"]
+    assert "md_docs/manifest.json" in manifest["generated_files"]
+
+
+def test_pack_can_write_chinese_markdown(monkeypatch, tmp_path: Path) -> None:
+    issue = sample_issue()
+    monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
+    monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
+
+    result = runner.invoke(app, ["pack", "owner/repo#7", "--workspace", str(tmp_path), "--language", "zh"])
+
+    assert result.exit_code == 0, result.output
+    root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
+    docs = root / "md_docs"
+    assert "阅读顺序" in (root / "index.md").read_text(encoding="utf-8")
+    assert "Issue 信息" in (docs / "issue.md").read_text(encoding="utf-8")
+    assert "PR 计划" in (docs / "plan.md").read_text(encoding="utf-8")
+    manifest = json.loads((docs / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["language"] == "zh"
 
 
 def test_pack_does_not_overwrite_without_force(monkeypatch, tmp_path: Path) -> None:
@@ -136,7 +160,9 @@ def test_pack_preflight_prevents_partial_writes_when_json_exists(monkeypatch, tm
     issue = sample_issue()
     root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
     root.mkdir(parents=True)
-    (root / "pack.json").write_text("{}", encoding="utf-8")
+    docs = root / "md_docs"
+    docs.mkdir()
+    (docs / "pack.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr("opensense.cli.github_client_for_workspace", lambda workspace: object())
     monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
 
@@ -144,7 +170,7 @@ def test_pack_preflight_prevents_partial_writes_when_json_exists(monkeypatch, tm
 
     assert result.exit_code == 1
     assert "pack.json" in result.output
-    assert not (root / "issue.md").exists()
+    assert not (docs / "issue.md").exists()
 
 
 def test_pack_refuses_secret_like_issue_body(monkeypatch, tmp_path: Path) -> None:
@@ -165,7 +191,7 @@ def test_pack_refuses_secret_like_issue_body(monkeypatch, tmp_path: Path) -> Non
     assert result.exit_code == 1
     assert "Potential secret detected" in result.output
     assert "sk-1234567890abcdefghijklmnop" not in result.output
-    assert not (tmp_path / ".opensense" / "packs" / "owner__repo" / "9" / "issue.md").exists()
+    assert not (tmp_path / ".opensense" / "packs" / "owner__repo" / "9" / "md_docs" / "issue.md").exists()
 
 
 def test_evidence_requires_existing_pack(tmp_path: Path) -> None:
@@ -181,9 +207,10 @@ def test_evidence_rejects_pack_without_valid_manifest(monkeypatch, tmp_path: Pat
     monkeypatch.setattr("opensense.cli.fetch_issue", lambda client, repo, number: issue)
     assert runner.invoke(app, ["pack", "owner/repo#7", "--workspace", str(tmp_path)]).exit_code == 0
     root = tmp_path / ".opensense" / "packs" / "owner__repo" / "7"
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    docs = root / "md_docs"
+    manifest = json.loads((docs / "manifest.json").read_text(encoding="utf-8"))
     manifest["secret_scan"]["status"] = "blocked"
-    (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (docs / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     result = runner.invoke(app, ["evidence", "owner/repo#7", "--workspace", str(tmp_path)])
 

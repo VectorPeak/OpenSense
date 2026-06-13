@@ -21,7 +21,7 @@ from opensense.core.pack import generate_pack
 from opensense.core.patch import patch_dry_run
 from opensense.core.planner import generate_plan
 from opensense.core.pr_draft import generate_pr_draft
-from opensense.core.proposal import generate_patch_proposal
+from opensense.core.proposal import generate_patch_proposal, normalize_language
 from opensense.core.ranking import rank_issues
 from opensense.core.sandbox import create_sandbox, load_sandbox
 from opensense.core.scoring import score_issue
@@ -364,18 +364,19 @@ def pack(
     issue: str,
     workspace: Optional[Path] = workspace_option(),
     force: bool = typer.Option(False, "--force", help="Overwrite existing pack files."),
+    language: str = typer.Option("en", "--language", help="Output language for generated markdown: en or zh."),
 ) -> None:
     """Generate a read-only context pack for one issue."""
 
     issue_ref, fetched_issue = fetch_one_issue(workspace, issue)
     try:
-        result = generate_pack(fetched_issue, issue_ref, workspace, force=force)
+        result = generate_pack(fetched_issue, issue_ref, workspace, force=force, language=normalize_language(language))
     except (FileExistsError, ValueError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     console.print(f"Context pack written to {result.root}")
     for path in result.written_files:
-        console.print(f"- {path.name}")
+        console.print(f"- {path.relative_to(result.root)}")
 
 
 @app.command()
@@ -443,12 +444,13 @@ def propose(
     issue: str,
     workspace: Optional[Path] = workspace_option(),
     force: bool = typer.Option(False, "--force", help="Overwrite an existing patch-proposal.md."),
+    language: Optional[str] = typer.Option(None, "--language", help="Output language for patch-proposal.md: en or zh. Defaults to the pack language."),
 ) -> None:
     """Write a patch proposal from an existing validated context pack."""
 
     try:
         issue_ref = parse_issue_reference(issue)
-        path = generate_patch_proposal(issue_ref, workspace, force=force)
+        path = generate_patch_proposal(issue_ref, workspace, force=force, language=language)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc

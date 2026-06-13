@@ -32,9 +32,10 @@ def init_git_repo(path: Path) -> None:
 def write_valid_pack(workspace: Path, issue_text: str = "owner/repo#7") -> None:
     issue_ref = parse_issue_reference(issue_text)
     paths = pack_paths(issue_ref, workspace)
-    paths.root.mkdir(parents=True, exist_ok=True)
+    paths.docs_dir.mkdir(parents=True, exist_ok=True)
+    paths.index_md.write_text(f"# OpenSense Pack: {issue_ref.ref}\n", encoding="utf-8")
     for name in PACK_FILENAMES:
-        (paths.root / name).write_text(f"# {name}\n", encoding="utf-8")
+        (paths.docs_dir / name).write_text(f"# {name}\n", encoding="utf-8")
     pack = {
         "schema_version": 1,
         "issue": {
@@ -65,7 +66,7 @@ def write_valid_pack(workspace: Path, issue_text: str = "owner/repo#7") -> None:
         "issue_url": issue_ref.url,
         "secret_scan": {"status": "passed"},
         "safety": {"source_modified": False, "github_write_performed": False},
-        "generated_files": [*PACK_FILENAMES, "pack.json", "manifest.json"],
+        "generated_files": ["index.md", *(f"md_docs/{name}" for name in PACK_FILENAMES), "md_docs/pack.json", "md_docs/manifest.json"],
     }
     paths.pack_json.write_text(json.dumps(pack), encoding="utf-8")
     paths.manifest_json.write_text(json.dumps(manifest), encoding="utf-8")
@@ -79,7 +80,7 @@ def test_patch_propose_writes_proposal_without_source_changes(tmp_path: Path) ->
     result = runner.invoke(app, ["propose", "owner/repo#7", "--workspace", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
-    proposal = tmp_path / ".opensense" / "packs" / "owner__repo" / "7" / "patch-proposal.md"
+    proposal = tmp_path / ".opensense" / "packs" / "owner__repo" / "7" / "md_docs" / "patch-proposal.md"
     assert proposal.exists()
     text = proposal.read_text(encoding="utf-8")
     assert "Patch Proposal" in text

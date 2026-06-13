@@ -28,9 +28,10 @@ def text_payload(response: dict) -> dict:
 def write_sample_pack(workspace: Path) -> None:
     issue_ref = parse_issue_reference("owner/repo#7")
     paths = pack_paths(issue_ref, workspace)
-    paths.root.mkdir(parents=True, exist_ok=True)
+    paths.docs_dir.mkdir(parents=True, exist_ok=True)
+    paths.index_md.write_text("# OpenSense Pack: owner/repo#7\n", encoding="utf-8")
     for name in PACK_FILENAMES:
-        (paths.root / name).write_text(f"# {name}\n", encoding="utf-8")
+        (paths.docs_dir / name).write_text(f"# {name}\n", encoding="utf-8")
     pack = {
         "schema_version": 1,
         "issue": {
@@ -50,7 +51,7 @@ def write_sample_pack(workspace: Path) -> None:
         "issue_ref": "owner/repo#7",
         "secret_scan": {"status": "passed"},
         "safety": {"source_modified": False, "github_write_performed": False},
-        "generated_files": ["pack.json", "manifest.json"],
+        "generated_files": ["index.md", *(f"md_docs/{name}" for name in PACK_FILENAMES), "md_docs/pack.json", "md_docs/manifest.json"],
     }
     paths.pack_json.write_text(json.dumps(pack), encoding="utf-8")
     paths.manifest_json.write_text(json.dumps(manifest), encoding="utf-8")

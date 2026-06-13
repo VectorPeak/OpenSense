@@ -203,10 +203,18 @@ vllm-project/vllm 82     Go       external contributors are getting merged; lang
 
 ```text
 .opensense/packs/<owner>__<repo>/<issue>/
-  issue.md
-  pack.json
-  manifest.json
-  patch-proposal.md
+  index.md
+  md_docs/
+    issue.md
+    repo.md
+    files.md
+    tests.md
+    plan.md
+    risks.md
+    agent.md
+    pack.json
+    manifest.json
+    patch-proposal.md
   sandbox.json
   agent-handoff.md
   agent-apply.json
@@ -238,6 +246,7 @@ opensense daily --no-llm --limit 5
 ```bash
 opensense issue owner/repo#123 --plan --no-llm
 opensense pack https://github.com/owner/repo/issues/123
+opensense pack https://github.com/owner/repo/issues/123 --language zh
 opensense patch https://github.com/owner/repo/issues/123 --dry-run
 opensense propose https://github.com/owner/repo/issues/123
 ```
@@ -407,7 +416,7 @@ opensense attempt list
 opensense attempt open https://github.com/vllm-project/vllm/issues/12345
 ```
 
-`pack` 会在 `.opensense/packs/<owner>__<repo>/<issue-number>/` 下写入上下文包；`patch --dry-run` 只判断是否适合继续，不修改源码；`propose` 写出 `patch-proposal.md`；`sandbox create` 显式创建本地 git worktree；`agent handoff` 生成给编码 agent 的任务单；`agent apply` 只在 sandbox worktree 内运行你显式传入的命令，并记录 `agent-apply.json`、`agent-output.log`、`diff.patch`、`diffstat.txt`。
+`pack` 会在 `.opensense/packs/<owner>__<repo>/<issue-number>/` 下写入上下文包：根目录放一个入口 `index.md`，详细材料放在 `md_docs/`。默认生成英文 Markdown；如果需要中文，可以使用 `opensense pack <issue> --language zh`。`patch --dry-run` 只判断是否适合继续，不修改源码；`propose` 会在 `md_docs/patch-proposal.md` 写出 patch proposal，并默认沿用 pack 的语言；`sandbox create` 显式创建本地 git worktree；`agent handoff` 生成给编码 agent 的任务单；`agent apply` 只在 sandbox worktree 内运行你显式传入的命令，并记录 `agent-apply.json`、`agent-output.log`、`diff.patch`、`diffstat.txt`。
 
 `test run` 记录真实测试命令、退出码和日志；`pr draft` 基于 agent apply、diff 和 test evidence 生成本地 PR 草稿；`agent status` 则把当前 issue 的本地尝试状态汇总成一个表格，并提示下一步该做什么。
 

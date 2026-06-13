@@ -128,7 +128,7 @@ def handoff_markdown(pack: dict, issue_ref: IssueRef, sandbox: SandboxInfo, path
             f"Issue: {issue_ref.ref}",
             f"Title: {issue.get('title', 'unknown')}",
             f"Sandbox worktree: `{sandbox.real_worktree_path}`",
-            f"Patch proposal: `{paths.patch_proposal_md.name}`",
+            f"Patch proposal: `{paths.patch_proposal_md.relative_to(paths.root)}`",
             "",
             "## Goal",
             "",
@@ -137,9 +137,9 @@ def handoff_markdown(pack: dict, issue_ref: IssueRef, sandbox: SandboxInfo, path
             "",
             "## Files To Read First",
             "",
-            "- `issue.md`",
-            "- `repo.md`",
-            "- `patch-proposal.md`",
+            "- `md_docs/issue.md`",
+            "- `md_docs/repo.md`",
+            "- `md_docs/patch-proposal.md`",
             "",
             "## Suggested Tests",
             *(f"- `{command}`" for command in commands),
@@ -169,7 +169,7 @@ def generate_agent_handoff(issue_ref: IssueRef, workspace: Path | None = None, *
         "generated_at": utc_now(),
         "sandbox_id": sandbox.sandbox_id,
         "worktree_path": sandbox.real_worktree_path,
-        "patch_proposal": paths.patch_proposal_md.name,
+        "patch_proposal": str(paths.patch_proposal_md.relative_to(paths.root)),
         "source_modified": False,
         "git_commit_performed": False,
         "git_push_performed": False,
@@ -188,7 +188,7 @@ def summarize_agent_status(issue_ref: IssueRef, workspace: Path | None = None) -
 
     rows: list[tuple[str, str, str]] = [("Pack", "ready", "validated pack and manifest")]
     proposal_status = "ready" if paths.patch_proposal_md.exists() else "missing"
-    rows.append(("Proposal", proposal_status, "patch-proposal.md" if proposal_status == "ready" else "run opensense propose"))
+    rows.append(("Proposal", proposal_status, "md_docs/patch-proposal.md" if proposal_status == "ready" else "run opensense propose"))
 
     sandbox_status = "missing"
     sandbox_detail = "run opensense sandbox create"

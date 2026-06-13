@@ -72,7 +72,7 @@ def iter_attempt_roots(workspace: Path | None = None) -> list[Path]:
 
 
 def issue_ref_from_attempt_root(root: Path) -> str | None:
-    pack_json = root / "pack.json"
+    pack_json = root / "md_docs" / "pack.json"
     if pack_json.exists():
         try:
             import json

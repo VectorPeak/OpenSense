@@ -14,6 +14,8 @@ from opensense.core.issue_ref import IssueRef
 @dataclass(frozen=True)
 class PackPaths:
     root: Path
+    index_md: Path
+    docs_dir: Path
     issue_md: Path
     repo_md: Path
     files_md: Path
@@ -41,6 +43,8 @@ class PackPaths:
     diffstat_txt: Path
 
 
+PACK_INDEX_FILENAME = "index.md"
+
 PACK_FILENAMES = (
     "issue.md",
     "repo.md",
@@ -67,22 +71,25 @@ EVIDENCE_FILENAMES = (
 
 def pack_paths(issue_ref: IssueRef, workspace: Path | None = None) -> PackPaths:
     root = state_dir(workspace) / "packs" / issue_ref.slug
+    docs_dir = root / "md_docs"
     return PackPaths(
         root=root,
-        issue_md=root / "issue.md",
-        repo_md=root / "repo.md",
-        files_md=root / "files.md",
-        tests_md=root / "tests.md",
-        plan_md=root / "plan.md",
-        risks_md=root / "risks.md",
-        agent_md=root / "agent.md",
+        index_md=root / PACK_INDEX_FILENAME,
+        docs_dir=docs_dir,
+        issue_md=docs_dir / "issue.md",
+        repo_md=docs_dir / "repo.md",
+        files_md=docs_dir / "files.md",
+        tests_md=docs_dir / "tests.md",
+        plan_md=docs_dir / "plan.md",
+        risks_md=docs_dir / "risks.md",
+        agent_md=docs_dir / "agent.md",
         pr_summary_md=root / "pr-summary.md",
         test_evidence_md=root / "test-evidence.md",
         maintainer_note_md=root / "maintainer-note.md",
-        pack_json=root / "pack.json",
-        manifest_json=root / "manifest.json",
+        pack_json=docs_dir / "pack.json",
+        manifest_json=docs_dir / "manifest.json",
         sandbox_json=root / "sandbox.json",
-        patch_proposal_md=root / "patch-proposal.md",
+        patch_proposal_md=docs_dir / "patch-proposal.md",
         test_run_json=root / "test-run.json",
         test_run_md=root / "test-run.md",
         test_output_log=root / "test-output.log",
@@ -97,10 +104,18 @@ def pack_paths(issue_ref: IssueRef, workspace: Path | None = None) -> PackPaths:
     )
 
 
+def pack_artifact_path(paths: PackPaths, filename: str) -> Path:
+    if filename == PACK_INDEX_FILENAME:
+        return paths.index_md
+    if filename in PACK_ARTIFACT_FILENAMES or filename == "patch-proposal.md":
+        return paths.docs_dir / filename
+    return paths.root / filename
+
+
 def ensure_pack_can_write(paths: PackPaths, filenames: tuple[str, ...], *, force: bool = False) -> None:
     if force:
         return
-    existing = [name for name in filenames if (paths.root / name).exists()]
+    existing = [name for name in filenames if pack_artifact_path(paths, name).exists()]
     if existing:
         joined = ", ".join(existing)
         raise FileExistsError(f"Pack files already exist: {joined}. Re-run with --force to overwrite.")
@@ -112,7 +127,8 @@ def write_markdown_files(paths: PackPaths, files: dict[str, str], *, force: bool
     paths.root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name, content in files.items():
-        target = paths.root / name
+        target = pack_artifact_path(paths, name)
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content.rstrip() + "\n", encoding="utf-8", newline="\n")
         written.append(target)
     return tuple(written)
@@ -124,7 +140,8 @@ def write_json_files(paths: PackPaths, files: dict[str, dict[str, object]], *, f
     paths.root.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     for name, content in files.items():
-        target = paths.root / name
+        target = pack_artifact_path(paths, name)
+        target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(content, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
         written.append(target)
     return tuple(written)
@@ -145,7 +162,7 @@ def write_pack_artifacts(
 
 
 def require_existing_pack(paths: PackPaths) -> None:
-    missing = [name for name in PACK_FILENAMES if not (paths.root / name).exists()]
+    missing = [name for name in PACK_FILENAMES if not pack_artifact_path(paths, name).exists()]
     if missing:
         raise FileNotFoundError("Context pack not found. Run `opensense pack <issue-url>` first.")
 
